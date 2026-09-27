@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cambiar contraseña</title>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background-color: #eef1f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .caja {
+            background-color: #fff;
+            width: 100%;
+            max-width: 400px;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .12);
+        }
+
+        h2 { margin: 0 0 6px; font-size: 18px; color: #333; }
+
+        .subtitulo { margin: 0 0 22px; font-size: 13px; color: #888; }
+
+        label { display: block; margin-bottom: 6px; font-size: 13px; color: #555; }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .botones { display: flex; gap: 10px; }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            color: #fff;
+            background-color: #007bff;
+        }
+
+        button:hover      { background-color: #0056b3; }
+        button:disabled   { background-color: #90bce8; cursor: default; }
+        .btn-gris         { background-color: #6c757d; }
+        .btn-gris:hover   { background-color: #565e64; }
+
+        #aviso {
+            margin-top: 16px;
+            padding: 11px;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .ok    { background-color: #e7f6ec; color: #1b7a3d; }
+        .error { background-color: #fdecea; color: #b3261e; }
+    </style>
+</head>
+
+<body>
+
+<div class="caja">
+
+    <h2>Cambiar contraseña</h2>
+    <p class="subtitulo" id="subtitulo">&nbsp;</p>
+
+    <form id="formPassword">
+
+        <label for="passwordActual">Contraseña actual</label>
+        <input type="password" id="passwordActual" maxlength="50" autocomplete="current-password" required>
+
+        <label for="passwordNueva">Nueva contraseña</label>
+        <input type="password" id="passwordNueva" minlength="6" maxlength="50" autocomplete="new-password" required>
+
+        <label for="passwordConfirmacion">Repetir nueva contraseña</label>
+        <input type="password" id="passwordConfirmacion" minlength="6" maxlength="50" autocomplete="new-password" required>
+
+        <div class="botones">
+            <button type="submit" id="btnCambiar">Cambiar</button>
+            <button type="button" class="btn-gris" onclick="location.href='libros.html'">Volver</button>
+        </div>
+
+    </form>
+
+    <div id="aviso"></div>
+
+</div>
+
+<script>
+
+    // Si cualquier petición responde 401, la sesión caducó
+    $(document).ajaxError(function (evento, xhr) {
+        if (xhr.status === 401) {
+            window.location.href = 'login.html';
+        }
+    });
+
+    function avisar(texto, clase) {
+        $('#aviso').removeClass().addClass(clase).text(texto).fadeIn();
+    }
+
+    // =========================================================
+    // POST /api/auth/password
+    // =========================================================
+    $('#formPassword').on('submit', function (evento) {
+
+        evento.preventDefault();
+
+        var nueva = $('#passwordNueva').val();
+        var confirmacion = $('#passwordConfirmacion').val();
+
+        // Validación en el navegador. El servidor la repite igualmente:
+        // nunca se confía sólo en el frontend.
+        if (nueva !== confirmacion) {
+            avisar('La nueva contraseña y su confirmación no coinciden', 'error');
+            return;
+        }
+
+        var datos = {
+            passwordActual: $('#passwordActual').val(),
+            passwordNueva: nueva,
+            passwordConfirmacion: confirmacion
+        };
+
+        $('#btnCambiar').prop('disabled', true).text('Guardando...');
+
+        $.ajax({
+            url: '/api/auth/password',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(datos),
+
+            success: function (respuesta) {
+
+                avisar(respuesta.mensaje, 'ok');
+                $('#formPassword')[0].reset();
+                $('#btnCambiar').hide();
+
+                // El servidor cerró la sesión: hay que entrar con la clave nueva.
+                setTimeout(function () {
+                    window.location.href = 'login.html';
+                }, 2500);
+            },
+
+            error: function (xhr) {
+                if (xhr.status !== 401) {
+                    avisar(xhr.responseJSON ? xhr.responseJSON.mensaje : 'Error de conexión', 'error');
+                }
+                $('#btnCambiar').prop('disabled', false).text('Cambiar');
+            }
+        });
+    });
+
+    // =========================================================
+    // ARRANQUE: comprobar que hay sesión
+    // =========================================================
+    $.ajax({
+        url: '/api/auth/sesion',
+        type: 'GET',
+        success: function (usuario) {
+            $('#subtitulo').text('Usuario: ' + usuario.username);
+        }
+    });
+
+    $('#passwordActual').focus();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Iniciar sesión</title>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background-color: #eef1f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px;
+        }
+
+        .caja {
+            background-color: #fff;
+            width: 100%;
+            max-width: 360px;
+            padding: 32px;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .12);
+        }
+
+        h2 { margin: 0 0 24px; text-align: center; color: #333; }
+
+        label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 18px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        button {
+            width: 100%;
+            padding: 11px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:hover  { background-color: #0056b3; }
+        button:disabled { background-color: #90bce8; cursor: default; }
+
+        #mensaje {
+            margin-top: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .error { background-color: #fdecea; color: #b3261e; }
+
+        .ayuda {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }
+
+        .pie {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px solid #eee;
+            font-size: 13px;
+            color: #666;
+            text-align: center;
+        }
+
+        .pie a { color: #007bff; text-decoration: none; }
+        .pie a:hover { text-decoration: underline; }
+    </style>
+</head>
+
+<body>
+
+<div class="caja">
+
+    <h2>Iniciar sesión</h2>
+
+    <form id="formLogin">
+
+        <label for="username">Usuario</label>
+        <input type="text" id="username" maxlength="50" autocomplete="username" required>
+
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" maxlength="50" autocomplete="current-password" required>
+
+        <button type="submit" id="btnEntrar">Entrar</button>
+
+    </form>
+
+    <div id="mensaje"></div>
+
+    <p class="ayuda">Usuario de prueba: admin / 123456</p>
+
+    <p class="pie">¿No tienes cuenta? <a href="registro.html">Crear una</a></p>
+
+</div>
+
+<script>
+
+    // =========================================================
+    // Muestra un mensaje de error debajo del formulario
+    // =========================================================
+    function mostrarError(texto) {
+        $('#mensaje')
+            .removeClass()
+            .addClass('error')
+            .text(texto)
+            .fadeIn();
+    }
+
+    // =========================================================
+    // Envío del formulario -> POST /api/auth/login
+    // =========================================================
+    $('#formLogin').on('submit', function (evento) {
+
+        evento.preventDefault();   // evita que el navegador recargue la página
+
+        $('#mensaje').hide();
+        $('#btnEntrar').prop('disabled', true).text('Entrando...');
+
+        var credenciales = {
+            username: $('#username').val().trim(),
+            password: $('#password').val()
+        };
+
+        $.ajax({
+            url: '/api/auth/login',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(credenciales),
+
+            success: function () {
+                // La sesión quedó abierta (cookie JSESSIONID).
+                window.location.href = 'libros.html';
+            },
+
+            error: function (xhr) {
+                var texto = xhr.responseJSON
+                    ? xhr.responseJSON.mensaje
+                    : 'No se pudo conectar con el servidor';
+
+                mostrarError(texto);
+                $('#password').val('').focus();
+            },
+
+            complete: function () {
+                $('#btnEntrar').prop('disabled', false).text('Entrar');
+            }
+        });
+    });
+
+    // =========================================================
+    // Si ya hay sesión abierta, saltar directo al listado
+    // =========================================================
+    $.ajax({
+        url: '/api/auth/sesion',
+        type: 'GET',
+        success: function () {
+            window.location.href = 'libros.html';
+        }
+        // Si responde 401 no hacemos nada: se queda en el login.
+    });
+
+    $('#username').focus();
+
+</script>
+
+</body>
+</html>
