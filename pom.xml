@@ -54,10 +54,10 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
-        <!-- Driver de SQL Server -->
+        <!-- Driver de mysql -->
         <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
         </dependency>
 
