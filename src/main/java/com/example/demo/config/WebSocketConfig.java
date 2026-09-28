@@ -2,6 +2,7 @@ package com.example.demo.config;
 
 import com.example.demo.controller.AuthController;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -33,9 +34,20 @@ import java.util.Map;
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    /**
+     * Dominios desde los que se acepta el WebSocket. Detras de un proxy (Railway)
+     * la comparacion automatica "mismo origen" falla, por eso se declaran aqui.
+     */
+    private final String[] origenesPermitidos;
+
+    public WebSocketConfig(@Value("${app.websocket.origenes}") String[] origenesPermitidos) {
+        this.origenesPermitidos = origenesPermitidos;
+    }
+
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
+                .setAllowedOriginPatterns(origenesPermitidos)
                 .addInterceptors(new SoloConSesion());
     }
 
