@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Alumnos · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Alumnos</h1>
+            <p>Registro de alumnos y datos de su apoderado.</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar().then(function () {
+        App.crud({
+            url: '/api/alumnos',
+            nombre: 'alumno',
+            editable: true,
+            busqueda: 'q',
+            columnas: [
+                { titulo: 'DNI', valor: function (a) { return App.escapar(a.dni); } },
+                { titulo: 'Apellidos y nombres', valor: function (a) { return App.escapar(a.nombreCompleto); } },
+                { titulo: 'Nacimiento', valor: function (a) { return App.fecha(a.fechaNacimiento); } },
+                { titulo: 'Apoderado', valor: function (a) { return App.escapar(a.apoderado); } },
+                { titulo: 'Teléfono', valor: function (a) { return App.escapar(a.telefonoApoderado); } }
+            ],
+            campos: [
+                { nombre: 'dni', etiqueta: 'DNI', requerido: true, max: 8, patron: '\\d{8}', placeholder: '8 dígitos' },
+                { nombre: 'fechaNacimiento', etiqueta: 'Fecha de nacimiento', tipo: 'date', requerido: true },
+                { nombre: 'nombres', etiqueta: 'Nombres', requerido: true, max: 80 },
+                { nombre: 'apellidos', etiqueta: 'Apellidos', requerido: true, max: 80 },
+                { nombre: 'apoderado', etiqueta: 'Apoderado (nombre completo)', requerido: true, max: 120 },
+                { nombre: 'telefonoApoderado', etiqueta: 'Teléfono del apoderado', max: 15, patron: '\\d{6,15}' }
+            ]
+        });
+    });
+</script>
+
+</body>
+</html>

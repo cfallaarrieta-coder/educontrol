@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reportes · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+
+    <div class="cabecera no-imprimir">
+        <div>
+            <h1>Reportes</h1>
+            <p>Nómina de matriculados por sección y resumen de ocupación.</p>
+        </div>
+    </div>
+
+    <div class="panel no-imprimir">
+        <div class="barra-herramientas">
+            <div class="campo"><label for="anio">Año escolar</label><select id="anio"></select></div>
+            <div class="campo ancho"><label for="seccion">Sección</label><select id="seccion"></select></div>
+            <div><button type="button" id="btnImprimir" class="btn-gris">🖨 Imprimir nómina</button></div>
+        </div>
+    </div>
+
+    <!-- NOMINA -->
+    <div class="panel" id="nomina">
+        <h2 id="tituloNomina">Nómina de matrícula</h2>
+        <p id="datosSeccion" style="color:#555;margin-top:-6px"></p>
+        <div class="tabla-scroll">
+            <table>
+                <thead><tr><th>N°</th><th>DNI</th><th>Apellidos y nombres</th><th>Apoderado</th><th>Teléfono</th><th>Fecha matrícula</th></tr></thead>
+                <tbody id="tablaNomina"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- RESUMEN -->
+    <div class="panel no-imprimir">
+        <h2>Resumen de ocupación del año</h2>
+        <div class="tabla-scroll">
+            <table>
+                <thead><tr><th>Nivel</th><th>Grado y sección</th><th>Turno</th><th>Tutor</th><th>Ocupación</th><th>Vacantes</th></tr></thead>
+                <tbody id="tablaResumen"></tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<script>
+
+    var secciones = [];
+
+    function cargarAnio() {
+        return App.api('GET', '/api/secciones?anioId=' + $('#anio').val()).done(function (lista) {
+            secciones = lista;
+
+            var $s = $('#seccion').empty();
+            lista.forEach(function (s) {
+                $s.append($('<option>').val(s.id).text(s.descripcion + ' (' + s.matriculados + ' alumnos)'));
+            });
+
+            $('#tablaResumen').html(lista.map(function (s) {
+                return '<tr><td>' + App.nombre(s.nivel) + '</td><td><b>' + App.escapar(s.descripcion) + '</b></td>' +
+                    '<td>' + App.nombre(s.turno) + '</td><td>' + App.escapar(s.tutor || '—') + '</td>' +
+                    '<td>' + App.ocupacion(s.vacantesDisponibles, s.vacantesMaximas) + '</td>' +
+                    '<td>' + App.etiquetaVacantes(s.vacantesDisponibles) + '</td></tr>';
+            }).join('') || '<tr><td colspan="6" class="vacio">No hay secciones</td></tr>');
+        });
+    }
+
+    function cargarNomina() {
+        var id = Number($('#seccion').val());
+        var s = secciones.find(function (x) { return x.id === id; });
+
+        if (!s) {
+            $('#tituloNomina').text('Nómina de matrícula');
+            $('#datosSeccion').text('');
+            $('#tablaNomina').html('<tr><td colspan="6" class="vacio">Selecciona una sección</td></tr>');
+            return;
+        }
+
+        $('#tituloNomina').text('Nómina de matrícula ' + s.anio + ' · ' + s.descripcion);
+        $('#datosSeccion').text('Turno: ' + App.nombre(s.turno) + ' · Aula: ' + (s.aula || '—') +
+            ' · Tutor: ' + (s.tutor || '—') + ' · Matriculados: ' + s.matriculados + ' de ' + s.vacantesMaximas);
+
+        App.api('GET', '/api/matriculas/nomina/' + id).done(function (lista) {
+            $('#tablaNomina').html(lista.map(function (m, i) {
+                return '<tr><td>' + (i + 1) + '</td><td>' + App.escapar(m.alumnoDni) + '</td>' +
+                    '<td><b>' + App.escapar(m.alumno) + '</b></td><td>' + App.escapar(m.apoderado) + '</td>' +
+                    '<td>' + App.escapar(m.telefonoApoderado) + '</td><td>' + App.fecha(m.fecha) + '</td></tr>';
+            }).join('') || '<tr><td colspan="6" class="vacio">La sección aún no tiene alumnos matriculados</td></tr>');
+        });
+    }
+
+    $('#anio').on('change', function () { cargarAnio().then(cargarNomina); });
+    $('#seccion').on('change', cargarNomina);
+    $('#btnImprimir').on('click', function () { window.print(); });
+
+    App.iniciar().then(function () {
+        App.opciones.anios().then(function (ops) {
+            ops.forEach(function (o) { $('#anio').append($('<option>').val(o.valor).text(o.texto)); });
+            cargarAnio().then(cargarNomina);
+        });
+
+        // WebSocket: el reporte se mantiene al dia mientras esta abierto
+        App.escuchar('/topic/vacantes', function () {
+            var elegida = $('#seccion').val();
+            cargarAnio().then(function () { $('#seccion').val(elegida); cargarNomina(); });
+        });
+    });
+
+</script>
+
+</body>
+</html>

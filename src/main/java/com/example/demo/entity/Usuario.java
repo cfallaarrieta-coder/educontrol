@@ -17,12 +17,38 @@ public class Usuario {
     @Column(name = "password", nullable = false, length = 100)
     private String password;
 
+    /*
+     * Estas tres columnas se agregaron despues: se dejan "nullable" para que
+     * ddl-auto=update pueda anadirlas sobre una tabla usuario que ya tiene filas.
+     * El DataSeeder completa los valores que falten.
+     */
+    @Column(name = "nombre_completo", length = 100)
+    private String nombreCompleto;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rol", length = 20)
+    private Rol rol;
+
+    @Column(name = "activo")
+    private Boolean activo;
+
     public Usuario() {
     }
 
-    public Usuario(String username, String password) {
+    public Usuario(String username, String password, String nombreCompleto, Rol rol) {
         this.username = username;
         this.password = password;
+        this.nombreCompleto = nombreCompleto;
+        this.rol = rol;
+        this.activo = true;
+    }
+
+    public boolean esAdmin() {
+        return rol == Rol.ADMIN;
+    }
+
+    public boolean estaActivo() {
+        return Boolean.TRUE.equals(activo);
     }
 
     public Integer getId() {
@@ -47,5 +73,29 @@ public class Usuario {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getNombreCompleto() {
+        return nombreCompleto;
+    }
+
+    public void setNombreCompleto(String nombreCompleto) {
+        this.nombreCompleto = nombreCompleto;
+    }
+
+    public Rol getRol() {
+        return rol;
+    }
+
+    public void setRol(Rol rol) {
+        this.rol = rol;
+    }
+
+    public Boolean getActivo() {
+        return activo;
+    }
+
+    public void setActivo(Boolean activo) {
+        this.activo = activo;
     }
 }

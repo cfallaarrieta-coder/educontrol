@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Docentes · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Docentes</h1>
+            <p>Plana docente. Un docente puede ser tutor de una o más secciones.</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar().then(function () {
+        App.crud({
+            url: '/api/docentes',
+            nombre: 'docente',
+            editable: App.esAdmin(),
+            columnas: [
+                { titulo: 'DNI', valor: function (d) { return App.escapar(d.dni); } },
+                { titulo: 'Apellidos', valor: function (d) { return App.escapar(d.apellidos); } },
+                { titulo: 'Nombres', valor: function (d) { return App.escapar(d.nombres); } },
+                { titulo: 'Especialidad', valor: function (d) { return App.escapar(d.especialidad); } },
+                { titulo: 'Teléfono', valor: function (d) { return App.escapar(d.telefono); } }
+            ],
+            campos: [
+                { nombre: 'dni', etiqueta: 'DNI', requerido: true, max: 8, patron: '\\d{8}', placeholder: '8 dígitos' },
+                { nombre: 'telefono', etiqueta: 'Teléfono', max: 15, patron: '\\d{6,15}' },
+                { nombre: 'nombres', etiqueta: 'Nombres', requerido: true, max: 80 },
+                { nombre: 'apellidos', etiqueta: 'Apellidos', requerido: true, max: 80 },
+                { nombre: 'especialidad', etiqueta: 'Especialidad', max: 80 }
+            ]
+        });
+    });
+</script>
+
+</body>
+</html>

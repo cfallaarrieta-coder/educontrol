@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Años escolares · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Años escolares</h1>
+            <p>Solo se puede matricular en un año escolar ABIERTO.</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar({ soloAdmin: true }).then(function () {
+        App.crud({
+            url: '/api/anios',
+            nombre: 'año escolar',
+            editable: true,
+            columnas: [
+                { titulo: 'Año', valor: function (a) { return '<b>' + a.anio + '</b>'; } },
+                { titulo: 'Estado', valor: function (a) {
+                    return '<span class="etiqueta ' + (a.estado === 'ABIERTO' ? 'et-verde' : 'et-gris') + '">' + App.nombre(a.estado) + '</span>';
+                } }
+            ],
+            campos: [
+                { nombre: 'anio', etiqueta: 'Año', tipo: 'number', requerido: true, min: 2000, max: 2100 },
+                { nombre: 'estado', etiqueta: 'Estado', tipo: 'select', requerido: true, opciones: App.opciones.enumeracion(['ABIERTO', 'CERRADO']) }
+            ]
+        });
+    });
+</script>
+
+</body>
+</html>

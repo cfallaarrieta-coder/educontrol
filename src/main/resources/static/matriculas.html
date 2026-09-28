@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lista de matrículas · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+
+    <div class="cabecera">
+        <div>
+            <h1>Lista de matrículas</h1>
+            <p>Consulta, anula o traslada de sección. La lista se refresca sola cuando otro usuario hace cambios.</p>
+        </div>
+        <a class="btn btn-verde" href="matricula.html" style="text-decoration:none">+ Nueva matrícula</a>
+    </div>
+
+    <div class="panel">
+        <div class="barra-herramientas">
+            <div class="campo ancho"><label for="q">Buscar alumno</label>
+                <input type="search" id="q" placeholder="DNI, nombres o apellidos..."></div>
+            <div class="campo"><label for="anio">Año escolar</label><select id="anio"></select></div>
+            <div class="campo"><label for="seccion">Sección</label><select id="seccion"></select></div>
+            <div class="campo"><label for="estado">Estado</label>
+                <select id="estado">
+                    <option value="ACTIVA">Activas</option>
+                    <option value="ANULADA">Anuladas</option>
+                    <option value="">Todas</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tabla-scroll">
+            <table>
+                <thead>
+                <tr><th>Fecha</th><th>Alumno</th><th>DNI</th><th>Sección</th><th>Estado</th><th>Registró</th><th></th></tr>
+                </thead>
+                <tbody id="tabla"></tbody>
+            </table>
+        </div>
+        <p id="total" style="color:#888;font-size:12px;margin-bottom:0"></p>
+    </div>
+
+</main>
+
+<script>
+
+    var matriculas = [];
+    var secciones = [];
+
+    function cargarSecciones() {
+        return App.api('GET', '/api/secciones?anioId=' + $('#anio').val()).done(function (lista) {
+            secciones = lista;
+            var $s = $('#seccion').empty().append('<option value="">Todas</option>');
+            lista.forEach(function (s) { $s.append($('<option>').val(s.id).text(s.descripcion)); });
+        });
+    }
+
+    function cargar() {
+        var p = { anioId: $('#anio').val() };
+        if ($('#seccion').val()) p.seccionId = $('#seccion').val();
+        if ($('#estado').val()) p.estado = $('#estado').val();
+        if ($('#q').val().trim()) p.q = $('#q').val().trim();
+
+        App.api('GET', '/api/matriculas?' + $.param(p)).done(function (lista) {
+            matriculas = lista;
+            pintar();
+        });
+    }
+
+    function pintar() {
+        $('#total').text(matriculas.length + ' registro(s)');
+
+        if (!matriculas.length) {
+            $('#tabla').html('<tr><td colspan="7" class="vacio">No hay matrículas con esos filtros</td></tr>');
+            return;
+        }
+
+        $('#tabla').html(matriculas.map(function (m) {
+            var activa = m.estado === 'ACTIVA';
+            return '<tr>' +
+                '<td>' + App.fecha(m.fecha) + '</td>' +
+                '<td><b>' + App.escapar(m.alumno) + '</b></td>' +
+                '<td>' + App.escapar(m.alumnoDni) + '</td>' +
+                '<td>' + App.escapar(m.seccion) + '</td>' +
+                '<td><span class="etiqueta ' + (activa ? 'et-verde' : 'et-gris') + '">' + App.nombre(m.estado) + '</span></td>' +
+                '<td>' + App.escapar(m.registradoPor) + '</td>' +
+                '<td class="acciones">' + (activa
+                    ? '<button type="button" class="btn-chico btn-naranja btn-trasladar" data-id="' + m.id + '">Trasladar</button>' +
+                      '<button type="button" class="btn-chico btn-rojo btn-anular" data-id="' + m.id + '">Anular</button>'
+                    : '') + '</td>' +
+                '</tr>';
+        }).join(''));
+    }
+
+    function buscarMatricula(id) {
+        return matriculas.find(function (m) { return m.id === id; });
+    }
+
+    // =========================================================
+    // ANULAR
+    // =========================================================
+    $('#tabla').on('click', '.btn-anular', function () {
+        var m = buscarMatricula($(this).data('id'));
+        if (!confirm('¿Anular la matrícula de ' + m.alumno + ' en ' + m.seccion + '?\nLa vacante quedará libre.')) return;
+
+        App.api('POST', '/api/matriculas/' + m.id + '/anular')
+            .done(function () { App.toast('Matrícula anulada', 'ok'); cargar(); })
+            .fail(function (xhr) { if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error'); });
+    });
+
+    // =========================================================
+    // TRASLADO DE SECCION (mismo grado)
+    // =========================================================
+    $('#tabla').on('click', '.btn-trasladar', function () {
+        var m = buscarMatricula($(this).data('id'));
+
+        // Datos frescos: las vacantes pudieron cambiar desde que se cargo la pagina
+        App.api('GET', '/api/secciones?anioId=' + $('#anio').val() + '&gradoId=' + m.gradoId).done(function (lista) {
+
+            var destinos = lista.filter(function (s) { return s.id !== m.seccionId; });
+
+            var opciones = destinos.map(function (s) {
+                return '<option value="' + s.id + '"' + (s.vacantesDisponibles === 0 ? ' disabled' : '') + '>' +
+                    App.escapar(s.descripcion) + ' · ' + App.nombre(s.turno) + ' · ' +
+                    (s.vacantesDisponibles === 0 ? 'LLENA' : s.vacantesDisponibles + ' vacantes') + '</option>';
+            }).join('');
+
+            var $fondo = $('<div class="modal-fondo"><form class="modal">' +
+                '<h2>Trasladar de sección</h2>' +
+                '<p><b>' + App.escapar(m.alumno) + '</b><br><small>Sección actual: ' + App.escapar(m.seccion) + '</small></p>' +
+                '<label for="destino">Nueva sección</label>' +
+                (destinos.length ? '<select id="destino" required>' + opciones + '</select>'
+                    : '<p class="vacio">No hay otras secciones de este grado</p>') +
+                '<div class="botones"><button type="button" class="btn-gris cancelar">Cancelar</button>' +
+                '<button type="submit" class="btn-naranja"' + (destinos.length ? '' : ' disabled') + '>Trasladar</button></div>' +
+                '</form></div>');
+
+            // Preselecciona la primera seccion con vacantes
+            var libre = destinos.find(function (s) { return s.vacantesDisponibles > 0; });
+            if (libre) $fondo.find('#destino').val(String(libre.id));
+
+            $('body').append($fondo);
+
+            $fondo.on('click', '.cancelar', function () { $fondo.remove(); });
+            $fondo.on('submit', 'form', function (e) {
+                e.preventDefault();
+                var destino = Number($fondo.find('#destino').val());
+                if (!destino) return;
+                $fondo.find('[type=submit]').prop('disabled', true).text('Procesando...');
+
+                App.api('POST', '/api/matriculas/' + m.id + '/traslado', { seccionDestinoId: destino })
+                    .done(function (r) {
+                        App.toast('✔ ' + r.alumno + ' trasladado a ' + r.seccion, 'ok');
+                        $fondo.remove();
+                        cargar();
+                    })
+                    .fail(function (xhr) {
+                        if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
+                        $fondo.find('[type=submit]').prop('disabled', false).text('Trasladar');
+                    });
+            });
+        });
+    });
+
+    // =========================================================
+    // Filtros y arranque
+    // =========================================================
+    var temporizador;
+    $('#q').on('input', function () { clearTimeout(temporizador); temporizador = setTimeout(cargar, 300); });
+    $('#seccion, #estado').on('change', cargar);
+    $('#anio').on('change', function () { cargarSecciones().then(cargar); });
+
+    App.iniciar().then(function () {
+        App.opciones.anios().then(function (ops) {
+            ops.forEach(function (o) { $('#anio').append($('<option>').val(o.valor).text(o.texto)); });
+            cargarSecciones().then(cargar);
+        });
+
+        // WebSocket: cualquier cambio de vacantes implica un cambio en las matriculas
+        var espera;
+        App.escuchar('/topic/vacantes', function () { clearTimeout(espera); espera = setTimeout(cargar, 300); });
+    });
+
+</script>
+
+</body>
+</html>

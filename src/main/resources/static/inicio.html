@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Inicio · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+
+    <div class="cabecera">
+        <div>
+            <h1 id="saludo">Bienvenido</h1>
+            <p id="subtitulo">Resumen del año escolar</p>
+        </div>
+        <a class="btn btn-verde" href="matricula.html" style="text-decoration:none">+ Nueva matrícula</a>
+    </div>
+
+    <div class="tarjetas">
+        <div class="tarjeta"><div class="numero" id="nMatriculados">–</div><div class="titulo">Alumnos matriculados</div></div>
+        <div class="tarjeta" style="border-left-color:var(--verde)"><div class="numero" id="nVacantes">–</div><div class="titulo">Vacantes libres</div></div>
+        <div class="tarjeta" style="border-left-color:var(--rojo)"><div class="numero" id="nLlenas">–</div><div class="titulo">Secciones llenas</div></div>
+        <div class="tarjeta" style="border-left-color:var(--acento)"><div class="numero" id="nAlumnos">–</div><div class="titulo">Alumnos registrados</div></div>
+    </div>
+
+    <div class="dos-columnas">
+
+        <div class="panel">
+            <h2>Matriculados por nivel</h2>
+            <table>
+                <tbody id="porNivel"></tbody>
+            </table>
+            <p style="color:#888;font-size:12px;margin-bottom:0">
+                Las cifras se actualizan solas (WebSocket) cuando cualquier usuario matricula, anula o traslada.
+            </p>
+        </div>
+
+        <div class="panel">
+            <h2>Actividad en vivo</h2>
+            <ul class="feed" id="feed">
+                <li class="vacio">Aún no hay actividad en esta sesión</li>
+            </ul>
+        </div>
+
+    </div>
+
+</main>
+
+<script>
+
+    function pintar(d) {
+        $('#subtitulo').text(d.anio ? 'Año escolar ' + d.anio + ' (abierto)' : 'No hay un año escolar abierto');
+        $('#nMatriculados').text(d.matriculados);
+        $('#nVacantes').text(d.vacantesLibres);
+        $('#nLlenas').text(d.seccionesLlenas + ' / ' + d.totalSecciones);
+        $('#nAlumnos').text(d.alumnosRegistrados);
+
+        var total = d.inicial + d.primaria + d.secundaria;
+        var filas = [['Inicial', d.inicial], ['Primaria', d.primaria], ['Secundaria', d.secundaria]];
+
+        $('#porNivel').html(filas.map(function (f) {
+            var pct = total ? Math.round(f[1] * 100 / total) : 0;
+            return '<tr><td style="width:110px"><b>' + f[0] + '</b></td>' +
+                '<td><div class="ocupacion"><div class="barra"><div class="relleno" style="width:' + pct + '%"></div></div>' +
+                '<small>' + f[1] + ' alumnos</small></div></td></tr>';
+        }).join(''));
+
+        $('.tarjeta').addClass('destello');
+        setTimeout(function () { $('.tarjeta').removeClass('destello'); }, 1500);
+    }
+
+    App.iniciar().then(function (usuario) {
+
+        $('#saludo').text('Hola, ' + (usuario.nombreCompleto || usuario.username));
+
+        App.api('GET', '/api/dashboard').done(pintar);
+
+        // ---- WebSocket ----
+        App.escuchar('/topic/dashboard', pintar);
+
+        App.escuchar('/topic/actividad', function (m) {
+            $('#feed .vacio').remove();
+            $('#feed').prepend($('<li class="destello">')
+                .append($('<time>').text(App.hora()))
+                .append(document.createTextNode(m.mensaje)));
+        });
+    });
+
+</script>
+
+</body>
+</html>

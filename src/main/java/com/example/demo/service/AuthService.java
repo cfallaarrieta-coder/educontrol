@@ -2,7 +2,6 @@ package com.example.demo.service;
 
 import com.example.demo.dto.CambioPasswordRequest;
 import com.example.demo.dto.LoginRequest;
-import com.example.demo.dto.RegistroRequest;
 import com.example.demo.dto.UsuarioResponse;
 import com.example.demo.entity.Usuario;
 import com.example.demo.exception.NegocioException;
@@ -24,32 +23,6 @@ public class AuthService {
     }
 
     /**
-     * Registra una cuenta nueva. No inicia sesion: el usuario
-     * debe entrar despues por la pantalla de login.
-     */
-    @Transactional
-    public UsuarioResponse registrar(RegistroRequest request) {
-
-        String username = request.username().trim();
-
-        if (usuarioRepository.existsByUsername(username)) {
-            throw new NegocioException("Ese nombre de usuario ya esta registrado");
-        }
-
-        if (!request.password().equals(request.passwordConfirmacion())) {
-            throw new NegocioException("La contrasena y su confirmacion no coinciden");
-        }
-
-        // La contrasena NUNCA se guarda tal cual: se guarda su hash.
-        Usuario usuario = new Usuario(
-                username,
-                passwordEncoder.encode(request.password())
-        );
-
-        return UsuarioResponse.desde(usuarioRepository.save(usuario));
-    }
-
-    /**
      * Valida las credenciales y devuelve el usuario autenticado.
      */
     @Transactional(readOnly = true)
@@ -68,6 +41,10 @@ public class AuthService {
             // Mismo mensaje que arriba, a proposito: si dijeramos
             // "ese usuario no existe" estariamos revelando que cuentas son validas.
             throw new NegocioException("Usuario o contrasena incorrectos");
+        }
+
+        if (!usuario.estaActivo()) {
+            throw new NegocioException("Tu cuenta esta desactivada. Consulta con la direccion.");
         }
 
         return usuario;

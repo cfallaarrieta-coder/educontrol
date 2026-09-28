@@ -3,121 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Cambiar contraseña</title>
-
+    <title>Cambiar contraseña · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-
-    <style>
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            background-color: #eef1f5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 16px;
-        }
-
-        .caja {
-            background-color: #fff;
-            width: 100%;
-            max-width: 400px;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, .12);
-        }
-
-        h2 { margin: 0 0 6px; font-size: 18px; color: #333; }
-
-        .subtitulo { margin: 0 0 22px; font-size: 13px; color: #888; }
-
-        label { display: block; margin-bottom: 6px; font-size: 13px; color: #555; }
-
-        input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 16px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .botones { display: flex; gap: 10px; }
-
-        button {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            font-size: 14px;
-            cursor: pointer;
-            color: #fff;
-            background-color: #007bff;
-        }
-
-        button:hover      { background-color: #0056b3; }
-        button:disabled   { background-color: #90bce8; cursor: default; }
-        .btn-gris         { background-color: #6c757d; }
-        .btn-gris:hover   { background-color: #565e64; }
-
-        #aviso {
-            margin-top: 16px;
-            padding: 11px;
-            border-radius: 5px;
-            font-size: 14px;
-            text-align: center;
-            display: none;
-        }
-
-        .ok    { background-color: #e7f6ec; color: #1b7a3d; }
-        .error { background-color: #fdecea; color: #b3261e; }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
 </head>
 
 <body>
 
-<div class="caja">
+<div id="navbar"></div>
 
-    <h2>Cambiar contraseña</h2>
-    <p class="subtitulo" id="subtitulo">&nbsp;</p>
+<main class="contenedor" style="max-width:460px">
 
-    <form id="formPassword">
+    <div class="cabecera">
+        <div>
+            <h1>Cambiar contraseña</h1>
+            <p id="subtitulo">&nbsp;</p>
+        </div>
+    </div>
+
+    <form class="panel" id="formPassword">
 
         <label for="passwordActual">Contraseña actual</label>
         <input type="password" id="passwordActual" maxlength="50" autocomplete="current-password" required>
 
-        <label for="passwordNueva">Nueva contraseña</label>
+        <label for="passwordNueva" style="margin-top:14px">Nueva contraseña</label>
         <input type="password" id="passwordNueva" minlength="6" maxlength="50" autocomplete="new-password" required>
 
-        <label for="passwordConfirmacion">Repetir nueva contraseña</label>
+        <label for="passwordConfirmacion" style="margin-top:14px">Repetir nueva contraseña</label>
         <input type="password" id="passwordConfirmacion" minlength="6" maxlength="50" autocomplete="new-password" required>
 
-        <div class="botones">
+        <div style="display:flex;gap:10px;margin-top:18px">
             <button type="submit" id="btnCambiar">Cambiar</button>
-            <button type="button" class="btn-gris" onclick="location.href='libros.html'">Volver</button>
+            <button type="button" class="btn-gris" onclick="location.href='inicio.html'">Volver</button>
         </div>
 
     </form>
 
-    <div id="aviso"></div>
-
-</div>
+</main>
 
 <script>
-
-    // Si cualquier petición responde 401, la sesión caducó
-    $(document).ajaxError(function (evento, xhr) {
-        if (xhr.status === 401) {
-            window.location.href = 'login.html';
-        }
-    });
-
-    function avisar(texto, clase) {
-        $('#aviso').removeClass().addClass(clase).text(texto).fadeIn();
-    }
 
     // =========================================================
     // POST /api/auth/password
@@ -132,7 +58,7 @@
         // Validación en el navegador. El servidor la repite igualmente:
         // nunca se confía sólo en el frontend.
         if (nueva !== confirmacion) {
-            avisar('La nueva contraseña y su confirmación no coinciden', 'error');
+            App.toast('La nueva contraseña y su confirmación no coinciden', 'error');
             return;
         }
 
@@ -144,45 +70,24 @@
 
         $('#btnCambiar').prop('disabled', true).text('Guardando...');
 
-        $.ajax({
-            url: '/api/auth/password',
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(datos),
-
-            success: function (respuesta) {
-
-                avisar(respuesta.mensaje, 'ok');
+        App.api('POST', '/api/auth/password', datos)
+            .done(function (respuesta) {
+                App.toast(respuesta.mensaje, 'ok');
                 $('#formPassword')[0].reset();
-                $('#btnCambiar').hide();
 
                 // El servidor cerró la sesión: hay que entrar con la clave nueva.
-                setTimeout(function () {
-                    window.location.href = 'login.html';
-                }, 2500);
-            },
-
-            error: function (xhr) {
-                if (xhr.status !== 401) {
-                    avisar(xhr.responseJSON ? xhr.responseJSON.mensaje : 'Error de conexión', 'error');
-                }
+                setTimeout(function () { window.location.href = 'login.html'; }, 2500);
+            })
+            .fail(function (xhr) {
+                if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
                 $('#btnCambiar').prop('disabled', false).text('Cambiar');
-            }
-        });
+            });
     });
 
-    // =========================================================
-    // ARRANQUE: comprobar que hay sesión
-    // =========================================================
-    $.ajax({
-        url: '/api/auth/sesion',
-        type: 'GET',
-        success: function (usuario) {
-            $('#subtitulo').text('Usuario: ' + usuario.username);
-        }
+    App.iniciar().then(function (usuario) {
+        $('#subtitulo').text('Usuario: ' + usuario.username);
+        $('#passwordActual').focus();
     });
-
-    $('#passwordActual').focus();
 
 </script>
 

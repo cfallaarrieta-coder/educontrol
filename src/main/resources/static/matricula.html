@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nueva matrícula · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+    <style>
+        .resultados { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--borde); border-radius: 5px; max-height: 240px; overflow-y: auto; }
+        .resultados:empty { display: none; }
+        .resultados li { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f0f2f5; }
+        .resultados li:hover { background-color: #eef3fa; }
+        .resultados small { color: #888; }
+        .alumno-elegido { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+            background-color: #eef6ee; border: 1px solid #cfe6d4; border-radius: 6px; padding: 12px 14px; }
+        .niveles { display: flex; gap: 6px; flex-wrap: wrap; }
+        .niveles button { background-color: #e6ebf2; color: var(--texto); }
+        .niveles button.activo { background-color: var(--azul); color: #fff; }
+        .nota { background-color: #fff8e1; border-left: 4px solid var(--acento); padding: 10px 14px; border-radius: 4px; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+
+    <div class="cabecera">
+        <div>
+            <h1>Nueva matrícula</h1>
+            <p>1) Elige al alumno · 2) Elige la sección. Las vacantes cambian en vivo si otra persona matricula.</p>
+        </div>
+    </div>
+
+    <div class="dos-columnas">
+        <div>
+
+            <!-- PASO 1: ALUMNO -->
+            <div class="panel">
+                <h2>1. Alumno</h2>
+                <div id="buscadorAlumno">
+                    <input type="search" id="buscarAlumno" placeholder="Busca por DNI, nombres o apellidos...">
+                    <ul class="resultados" id="resultados"></ul>
+                    <p style="font-size:12px;color:#888;margin-bottom:0">
+                        ¿No está registrado? <a href="alumnos.html">Registrar alumno</a>
+                    </p>
+                </div>
+                <div class="alumno-elegido" id="alumnoElegido" hidden>
+                    <div>
+                        <b id="alumnoNombre"></b><br>
+                        <small id="alumnoDatos"></small>
+                    </div>
+                    <button type="button" class="btn-gris btn-chico" id="btnCambiarAlumno">Cambiar</button>
+                </div>
+            </div>
+
+            <!-- PASO 2: SECCION -->
+            <div class="panel">
+                <h2>2. Sección</h2>
+                <div class="barra-herramientas">
+                    <div class="campo"><label for="anio">Año escolar</label><select id="anio"></select></div>
+                    <div class="campo ancho">
+                        <label>Nivel</label>
+                        <div class="niveles">
+                            <button type="button" data-nivel="" class="activo">Todos</button>
+                            <button type="button" data-nivel="INICIAL">Inicial</button>
+                            <button type="button" data-nivel="PRIMARIA">Primaria</button>
+                            <button type="button" data-nivel="SECUNDARIA">Secundaria</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabla-scroll">
+                    <table>
+                        <thead>
+                        <tr><th>Grado y sección</th><th>Turno</th><th>Tutor</th><th>Ocupación</th><th>Vacantes</th><th></th></tr>
+                        </thead>
+                        <tbody id="secciones"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="panel">
+                <h2>Actividad en vivo</h2>
+                <ul class="feed" id="feed"><li class="vacio">Esperando actividad...</li></ul>
+            </div>
+            <div class="nota">
+                <b>Bloqueo pesimista:</b> al presionar <i>Matricular</i>, el servidor bloquea la fila de la
+                sección (<code>SELECT ... FOR UPDATE</code>). Si dos personas toman la última vacante a la vez,
+                la segunda espera y luego recibe <i>"sin vacantes"</i>. Nunca hay sobrecupo.
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<script>
+
+    var alumno = null;       // alumno elegido
+    var secciones = [];      // secciones del anio elegido
+    var nivel = '';
+
+    // =========================================================
+    // PASO 1: buscar y elegir alumno
+    // =========================================================
+    var temporizador;
+    $('#buscarAlumno').on('input', function () {
+        clearTimeout(temporizador);
+        var q = $(this).val().trim();
+        if (q.length < 2) { $('#resultados').empty(); return; }
+
+        temporizador = setTimeout(function () {
+            App.api('GET', '/api/alumnos?q=' + encodeURIComponent(q)).done(function (lista) {
+                $('#resultados').html(lista.slice(0, 10).map(function (a, i) {
+                    return '<li data-i="' + i + '"><b>' + App.escapar(a.nombreCompleto) + '</b> ' +
+                        '<small>DNI ' + App.escapar(a.dni) + '</small></li>';
+                }).join('') || '<li class="vacio">Sin resultados</li>');
+                $('#resultados').data('lista', lista);
+            });
+        }, 300);
+    });
+
+    $('#resultados').on('click', 'li[data-i]', function () {
+        elegirAlumno($('#resultados').data('lista')[$(this).data('i')]);
+    });
+
+    function elegirAlumno(a) {
+        alumno = a;
+        $('#buscadorAlumno').prop('hidden', !!a);
+        $('#alumnoElegido').prop('hidden', !a);
+        if (a) {
+            $('#alumnoNombre').text(a.nombreCompleto);
+            $('#alumnoDatos').text('DNI ' + a.dni + ' · Nac. ' + App.fecha(a.fechaNacimiento) + ' · Apoderado: ' + a.apoderado);
+        } else {
+            $('#buscarAlumno').val('').focus();
+            $('#resultados').empty();
+        }
+        pintarSecciones();
+    }
+
+    $('#btnCambiarAlumno').on('click', function () { elegirAlumno(null); });
+
+    // =========================================================
+    // PASO 2: secciones con vacantes
+    // =========================================================
+    function cargarSecciones() {
+        App.api('GET', '/api/secciones?anioId=' + $('#anio').val()).done(function (lista) {
+            secciones = lista;
+            pintarSecciones();
+        });
+    }
+
+    function pintarSecciones() {
+        var visibles = secciones.filter(function (s) { return !nivel || s.nivel === nivel; });
+
+        if (!visibles.length) {
+            $('#secciones').html('<tr><td colspan="6" class="vacio">No hay secciones</td></tr>');
+            return;
+        }
+
+        $('#secciones').html(visibles.map(function (s) {
+            return '<tr data-seccion="' + s.id + '">' +
+                '<td><b>' + App.escapar(s.descripcion) + '</b></td>' +
+                '<td>' + App.nombre(s.turno) + '</td>' +
+                '<td>' + App.escapar(s.tutor || '—') + '</td>' +
+                '<td class="c-ocupacion">' + App.ocupacion(s.vacantesDisponibles, s.vacantesMaximas) + '</td>' +
+                '<td class="c-vacantes">' + App.etiquetaVacantes(s.vacantesDisponibles) + '</td>' +
+                '<td class="acciones"><button type="button" class="btn-chico btn-verde btn-matricular" data-id="' + s.id + '"' +
+                (!alumno || s.vacantesDisponibles === 0 ? ' disabled' : '') + '>Matricular</button></td>' +
+                '</tr>';
+        }).join(''));
+    }
+
+    $('.niveles').on('click', 'button', function () {
+        $('.niveles button').removeClass('activo');
+        $(this).addClass('activo');
+        nivel = $(this).data('nivel');
+        pintarSecciones();
+    });
+
+    $('#anio').on('change', cargarSecciones);
+
+    // =========================================================
+    // MATRICULAR -> POST /api/matriculas
+    // =========================================================
+    $('#secciones').on('click', '.btn-matricular', function () {
+        var $btn = $(this);
+        var seccion = secciones.find(function (s) { return s.id === $btn.data('id'); });
+
+        $btn.prop('disabled', true).text('Procesando...');
+
+        App.api('POST', '/api/matriculas', { alumnoId: alumno.id, seccionId: seccion.id })
+            .done(function (m) {
+                App.toast('✔ ' + m.alumno + ' matriculado en ' + m.seccion, 'ok');
+                elegirAlumno(null);
+            })
+            .fail(function (xhr) {
+                if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
+                pintarSecciones();
+            });
+    });
+
+    // =========================================================
+    // WEBSOCKET: vacantes y actividad en tiempo real
+    // =========================================================
+    function alCambiarVacantes(cambios) {
+        cambios.forEach(function (c) {
+            var s = secciones.find(function (x) { return x.id === c.seccionId; });
+            if (!s) return;
+            s.vacantesDisponibles = c.vacantesDisponibles;
+            s.vacantesMaximas = c.vacantesMaximas;
+        });
+        pintarSecciones();
+        cambios.forEach(function (c) { $('tr[data-seccion="' + c.seccionId + '"]').addClass('destello'); });
+    }
+
+    App.iniciar().then(function () {
+
+        App.opciones.anios().then(function (ops) {
+            ops.forEach(function (o) { $('#anio').append($('<option>').val(o.valor).text(o.texto)); });
+            cargarSecciones();
+        });
+
+        App.escuchar('/topic/vacantes', alCambiarVacantes);
+
+        App.escuchar('/topic/actividad', function (m) {
+            $('#feed .vacio').remove();
+            $('#feed').prepend($('<li class="destello">')
+                .append($('<time>').text(App.hora()))
+                .append(document.createTextNode(m.mensaje)));
+        });
+
+        $('#buscarAlumno').focus();
+    });
+
+</script>
+
+</body>
+</html>

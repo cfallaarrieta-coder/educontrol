@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Iniciar sesión</title>
+    <title>Iniciar sesión · Colegio Matrícula</title>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
@@ -30,7 +30,9 @@
             box-shadow: 0 2px 12px rgba(0, 0, 0, .12);
         }
 
-        h2 { margin: 0 0 24px; text-align: center; color: #333; }
+        h2 { margin: 0 0 6px; text-align: center; color: #1e3a5f; }
+
+        .sub { margin: 0 0 24px; text-align: center; font-size: 13px; color: #888; }
 
         label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
 
@@ -46,7 +48,7 @@
         button {
             width: 100%;
             padding: 11px;
-            background-color: #007bff;
+            background-color: #1e3a5f;
             color: #fff;
             border: none;
             border-radius: 5px;
@@ -54,7 +56,7 @@
             cursor: pointer;
         }
 
-        button:hover  { background-color: #0056b3; }
+        button:hover  { background-color: #2d5a8e; }
         button:disabled { background-color: #90bce8; cursor: default; }
 
         #mensaje {
@@ -93,7 +95,8 @@
 
 <div class="caja">
 
-    <h2>Iniciar sesión</h2>
+    <h2>🏫 Sistema de Matrícula</h2>
+    <p class="sub">Inicia sesión para continuar</p>
 
     <form id="formLogin">
 
@@ -109,9 +112,9 @@
 
     <div id="mensaje"></div>
 
-    <p class="ayuda">Usuario de prueba: admin / 123456</p>
+    <p class="ayuda">Usuarios de prueba: <b>admin</b> / 123456 &nbsp;·&nbsp; <b>secretaria</b> / 123456</p>
 
-    <p class="pie">¿No tienes cuenta? <a href="registro.html">Crear una</a></p>
+    <p class="pie">Las cuentas las crea la dirección desde <i>Mantenimiento › Usuarios</i>.</p>
 
 </div>
 
@@ -151,7 +154,7 @@
 
             success: function () {
                 // La sesión quedó abierta (cookie JSESSIONID).
-                window.location.href = 'libros.html';
+                window.location.href = 'inicio.html';
             },
 
             error: function (xhr) {
@@ -176,7 +179,7 @@
         url: '/api/auth/sesion',
         type: 'GET',
         success: function () {
-            window.location.href = 'libros.html';
+            window.location.href = 'inicio.html';
         }
         // Si responde 401 no hacemos nada: se queda en el login.
     });

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Secciones · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Secciones</h1>
+            <p>Secciones por grado y año escolar. Las vacantes se actualizan en tiempo real.</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar().then(function () {
+        var pantalla = App.crud({
+            url: '/api/secciones',
+            nombre: 'sección',
+            editable: App.esAdmin(),
+            filtros: [
+                { nombre: 'anioId', etiqueta: 'Año escolar', opciones: App.opciones.anios },
+                { nombre: 'gradoId', etiqueta: 'Grado', opciones: App.opciones.grados, todos: 'Todos los grados' }
+            ],
+            columnas: [
+                { titulo: 'Grado', valor: function (s) { return App.escapar(s.grado); } },
+                { titulo: 'Sección', valor: function (s) { return '<b>' + App.escapar(s.letra) + '</b>'; } },
+                { titulo: 'Turno', valor: function (s) { return App.nombre(s.turno); } },
+                { titulo: 'Aula', valor: function (s) { return App.escapar(s.aula); } },
+                { titulo: 'Tutor', valor: function (s) { return App.escapar(s.tutor || '—'); } },
+                { titulo: 'Ocupación', valor: function (s) { return App.ocupacion(s.vacantesDisponibles, s.vacantesMaximas); } },
+                { titulo: 'Vacantes', valor: function (s) { return App.etiquetaVacantes(s.vacantesDisponibles); } }
+            ],
+            campos: [
+                { nombre: 'anioEscolarId', etiqueta: 'Año escolar', tipo: 'select', requerido: true, numero: true, opciones: App.opciones.anios },
+                { nombre: 'gradoId', etiqueta: 'Grado', tipo: 'select', requerido: true, numero: true, opciones: App.opciones.grados },
+                { nombre: 'letra', etiqueta: 'Sección (letra)', requerido: true, max: 2, patron: '[A-Za-z]{1,2}', placeholder: 'A' },
+                { nombre: 'turno', etiqueta: 'Turno', tipo: 'select', requerido: true, opciones: App.opciones.enumeracion(['MANANA', 'TARDE']) },
+                { nombre: 'aula', etiqueta: 'Aula', max: 30 },
+                { nombre: 'tutorId', etiqueta: 'Tutor', tipo: 'select', numero: true, opciones: App.opciones.docentes },
+                { nombre: 'vacantesMaximas', etiqueta: 'Vacantes máximas', tipo: 'number', requerido: true, min: 1, max: 60,
+                  ayuda: 'No puede ser menor que los alumnos ya matriculados.' }
+            ]
+        });
+
+        // WebSocket: si otra persona matricula, la ocupacion se refresca sola
+        App.escuchar('/topic/vacantes', function () { pantalla.recargar(); });
+    });
+</script>
+
+</body>
+</html>

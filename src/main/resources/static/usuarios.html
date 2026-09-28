@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Usuarios · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Usuarios</h1>
+            <p>Cuentas de acceso. ADMIN administra todo; SECRETARIA registra alumnos y matrículas.</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar({ soloAdmin: true }).then(function () {
+        App.crud({
+            url: '/api/usuarios',
+            nombre: 'usuario',
+            editable: true,
+            columnas: [
+                { titulo: 'Usuario', valor: function (u) { return '<b>' + App.escapar(u.username) + '</b>'; } },
+                { titulo: 'Nombre', valor: function (u) { return App.escapar(u.nombreCompleto); } },
+                { titulo: 'Rol', valor: function (u) { return '<span class="etiqueta et-azul">' + App.nombre(u.rol) + '</span>'; } },
+                { titulo: 'Estado', valor: function (u) {
+                    return u.activo ? '<span class="etiqueta et-verde">Activo</span>' : '<span class="etiqueta et-gris">Inactivo</span>';
+                } }
+            ],
+            aFormulario: function (u) { return $.extend({}, u, { password: '' }); },
+            campos: [
+                { nombre: 'username', etiqueta: 'Usuario', requerido: true, max: 50, patron: '[a-zA-Z0-9_]{4,50}' },
+                { nombre: 'nombreCompleto', etiqueta: 'Nombre completo', requerido: true, max: 100 },
+                { nombre: 'rol', etiqueta: 'Rol', tipo: 'select', requerido: true, opciones: App.opciones.enumeracion(['SECRETARIA', 'ADMIN']) },
+                { nombre: 'activo', etiqueta: 'Cuenta activa', tipo: 'checkbox' },
+                { nombre: 'password', etiqueta: 'Contraseña', tipo: 'password', requerido: true, opcionalAlEditar: true, max: 50,
+                  ayuda: 'Mínimo 6 caracteres. Al editar, déjala vacía para no cambiarla.' }
+            ]
+        });
+    });
+</script>
+
+</body>
+</html>

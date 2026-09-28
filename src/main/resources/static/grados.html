@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Grados · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+    <div class="cabecera">
+        <div>
+            <h1>Grados</h1>
+            <p>Grados por nivel: Inicial (3, 4 y 5 años), Primaria (1° a 6°) y Secundaria (1° a 5°).</p>
+        </div>
+    </div>
+    <div id="crud"></div>
+</main>
+
+<script>
+    App.iniciar().then(function () {
+        App.crud({
+            url: '/api/grados',
+            nombre: 'grado',
+            editable: App.esAdmin(),
+            columnas: [
+                { titulo: 'Orden', valor: function (g) { return g.orden; } },
+                { titulo: 'Nivel', valor: function (g) { return '<span class="etiqueta et-azul">' + App.nombre(g.nivel) + '</span>'; } },
+                { titulo: 'Grado', valor: function (g) { return App.escapar(g.nombre); } },
+                { titulo: 'Descripción', valor: function (g) { return App.escapar(g.descripcion); } }
+            ],
+            campos: [
+                { nombre: 'nivel', etiqueta: 'Nivel', tipo: 'select', requerido: true,
+                  opciones: App.opciones.enumeracion(['INICIAL', 'PRIMARIA', 'SECUNDARIA']) },
+                { nombre: 'nombre', etiqueta: 'Nombre del grado', requerido: true, max: 20, placeholder: 'Ej: 1° o 3 años' },
+                { nombre: 'orden', etiqueta: 'Orden en listados', tipo: 'number', requerido: true, min: 1 }
+            ]
+        });
+    });
+</script>
+
+</body>
+</html>
