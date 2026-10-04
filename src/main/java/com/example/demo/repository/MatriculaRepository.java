@@ -65,4 +65,13 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             group by m.seccion.grado.nivel
             """)
     List<Object[]> contarPorNivel(Integer anioId);
+
+    /** Migra matriculas de la version anterior: ACTIVA (ya ocupaba vacante) -> MATRICULADA. */
+    @Modifying
+    @Query("""
+            update Matricula m
+               set m.estado = com.example.demo.entity.EstadoMatricula.MATRICULADA
+             where m.estado = com.example.demo.entity.EstadoMatricula.ACTIVA
+            """)
+    int migrarActivasAMatriculadas();
 }

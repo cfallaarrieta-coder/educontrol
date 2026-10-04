@@ -57,7 +57,17 @@ public class DataSeeder implements CommandLineRunner {
         List<Docente> docentes = docentes();
         secciones(anio, grados, docentes);
         alumnos();
+        migrarMatriculasAntiguas();
         inscripcionesYPagos(anio);
+    }
+
+    /** Matriculas creadas antes del modulo de pagos (estado ACTIVA) pasan a MATRICULADA. */
+    @SuppressWarnings("deprecation")
+    private void migrarMatriculasAntiguas() {
+        int migradas = matriculaRepository.migrarActivasAMatriculadas();
+        if (migradas > 0) {
+            System.out.println(">>> Matriculas migradas de ACTIVA a MATRICULADA: " + migradas);
+        }
     }
 
     private void usuarios() {
