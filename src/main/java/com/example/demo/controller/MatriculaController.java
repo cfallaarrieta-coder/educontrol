@@ -43,7 +43,15 @@ public class MatriculaController {
     @ResponseStatus(HttpStatus.CREATED)
     public MatriculaResponse matricular(@Valid @RequestBody MatriculaRequest request,
                                         @RequestAttribute(SessionInterceptor.USUARIO_ACTUAL) Usuario usuario) {
-        return matriculaService.matricular(request, usuario.getUsername());
+        return matriculaService.inscribir(request, usuario.getUsername());
+    }
+
+    /** POST /api/matriculas/inscribir  { "alumnoId": 1, "seccionId": 5 } */
+    @PostMapping("/inscribir")
+    @ResponseStatus(HttpStatus.CREATED)
+    public MatriculaResponse inscribir(@Valid @RequestBody MatriculaRequest request,
+                                       @RequestAttribute(SessionInterceptor.USUARIO_ACTUAL) Usuario usuario) {
+        return matriculaService.inscribir(request, usuario.getUsername());
     }
 
     /** POST /api/matriculas/{id}/anular */

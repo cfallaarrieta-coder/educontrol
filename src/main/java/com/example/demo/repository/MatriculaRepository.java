@@ -23,15 +23,18 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
     @Query("select m from Matricula m where m.id = :id")
     Optional<Matricula> findByIdParaActualizar(Integer id);
 
-    /** Regla: un alumno solo puede tener UNA matricula activa por anio escolar. */
+    /** Regla: un alumno no puede tener otra matricula inscrita o formalizada en el mismo anio escolar. */
     boolean existsByAlumnoIdAndSeccionAnioEscolarIdAndEstado(
             Integer alumnoId, Integer anioId, EstadoMatricula estado);
+
+    boolean existsByAlumnoIdAndSeccionAnioEscolarIdAndEstadoIn(
+            Integer alumnoId, Integer anioId, List<EstadoMatricula> estados);
 
     boolean existsBySeccionId(Integer seccionId);
 
     boolean existsByAlumnoId(Integer alumnoId);
 
-    @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar"})
+    @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar", "reciboMatricula"})
     @Query("""
             select m from Matricula m
             where (:anioId is null or m.seccion.anioEscolar.id = :anioId)
@@ -45,8 +48,8 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             """)
     List<Matricula> filtrar(Integer anioId, Integer seccionId, EstadoMatricula estado, String texto);
 
-    /** Nomina de una seccion en orden alfabetico. */
-    @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar"})
+    /** Nomina de una seccion en orden alfabetico (solo alumnos con matricula pagada). */
+    @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar", "reciboMatricula"})
     List<Matricula> findBySeccionIdAndEstadoOrderByAlumnoApellidosAscAlumnoNombresAsc(
             Integer seccionId, EstadoMatricula estado);
 
@@ -57,7 +60,7 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
     /** Matriculados activos por nivel: [Nivel, cantidad]. */
     @Query("""
             select m.seccion.grado.nivel, count(m) from Matricula m
-            where m.estado = com.example.demo.entity.EstadoMatricula.ACTIVA
+            where m.estado = com.example.demo.entity.EstadoMatricula.MATRICULADA
               and m.seccion.anioEscolar.id = :anioId
             group by m.seccion.grado.nivel
             """)

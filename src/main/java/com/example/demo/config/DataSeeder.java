@@ -23,6 +23,8 @@ public class DataSeeder implements CommandLineRunner {
     private final DocenteRepository docenteRepository;
     private final SeccionRepository seccionRepository;
     private final AlumnoRepository alumnoRepository;
+    private final MatriculaRepository matriculaRepository;
+    private final com.example.demo.service.PagoService pagoService;
     private final PasswordEncoder passwordEncoder;
 
     public DataSeeder(UsuarioRepository usuarioRepository,
@@ -31,6 +33,8 @@ public class DataSeeder implements CommandLineRunner {
                       DocenteRepository docenteRepository,
                       SeccionRepository seccionRepository,
                       AlumnoRepository alumnoRepository,
+                      MatriculaRepository matriculaRepository,
+                      com.example.demo.service.PagoService pagoService,
                       PasswordEncoder passwordEncoder) {
         this.usuarioRepository = usuarioRepository;
         this.anioRepository = anioRepository;
@@ -38,6 +42,8 @@ public class DataSeeder implements CommandLineRunner {
         this.docenteRepository = docenteRepository;
         this.seccionRepository = seccionRepository;
         this.alumnoRepository = alumnoRepository;
+        this.matriculaRepository = matriculaRepository;
+        this.pagoService = pagoService;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -51,6 +57,7 @@ public class DataSeeder implements CommandLineRunner {
         List<Docente> docentes = docentes();
         secciones(anio, grados, docentes);
         alumnos();
+        inscripcionesYPagos(anio);
     }
 
     private void usuarios() {
@@ -150,5 +157,37 @@ public class DataSeeder implements CommandLineRunner {
                 new Alumno("81123409", "Mia", "Cardenas Lopez", LocalDate.of(2022, 8, 21), "Julia Lopez Ramos", "912345686"),
                 new Alumno("80123410", "Thiago", "Aguilar Pinto", LocalDate.of(2021, 6, 17), "Marco Aguilar Soto", "912345687")
         ));
+    }
+
+    private void inscripcionesYPagos(AnioEscolar anio) {
+        if (matriculaRepository.count() > 0) {
+            return;
+        }
+        List<Alumno> listaAlumnos = alumnoRepository.findAll();
+        if (listaAlumnos.size() < 3) return;
+
+        List<Seccion> listaSecciones = seccionRepository.filtrar(anio.getId(), null);
+        if (listaSecciones.isEmpty()) return;
+        Seccion sec = listaSecciones.getFirst();
+
+        try {
+            // Alumno 1: Matriculado formalmente (Matricula pagada + cuota Marzo pagada)
+            Matricula m1 = matriculaRepository.save(new Matricula(listaAlumnos.get(0), sec, "admin", EstadoMatricula.INSCRITA));
+            pagoService.pagarMatricula(m1.getId(), new com.example.demo.dto.PagoRequest("EFECTIVO"), "admin");
+            var cc1 = pagoService.obtenerCuentaCorriente(m1.getId());
+            if (!cc1.cuotas().isEmpty()) {
+                pagoService.pagarCuota(cc1.cuotas().getFirst().id(), new com.example.demo.dto.PagoRequest("EFECTIVO"), "admin");
+            }
+
+            // Alumno 2: Matriculado formalmente (Matricula pagada, todas las cuotas DEBE)
+            Matricula m2 = matriculaRepository.save(new Matricula(listaAlumnos.get(1), sec, "admin", EstadoMatricula.INSCRITA));
+            pagoService.pagarMatricula(m2.getId(), new com.example.demo.dto.PagoRequest("TRANSFERENCIA"), "admin");
+
+            // Alumno 3: Solo Inscrito (Pendiente de pago de matricula, no ocupa vacante)
+            matriculaRepository.save(new Matricula(listaAlumnos.get(2), sec, "secretaria", EstadoMatricula.INSCRITA));
+            System.out.println(">>> Datos de prueba de Pagos y Cuenta Corriente inicializados con exito");
+        } catch (Exception e) {
+            System.err.println("Advertencia al sembrar pagos: " + e.getMessage());
+        }
     }
 }

@@ -6,6 +6,7 @@ import com.example.demo.entity.*;
 import com.example.demo.exception.NegocioException;
 import com.example.demo.repository.*;
 import com.example.demo.service.MatriculaService;
+import com.example.demo.service.PagoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @SpringBootTest
 class MatriculaConcurrenciaTest {
 
+    @Autowired PagoService pagoService;
     @Autowired MatriculaService matriculaService;
     @Autowired MatriculaRepository matriculaRepository;
     @Autowired SeccionRepository seccionRepository;
@@ -36,23 +38,28 @@ class MatriculaConcurrenciaTest {
     private static final AtomicInteger DNI = new AtomicInteger(60000000);
 
     @Test
-    void diezSecretariasPeleanTresVacantes_soloTresGanan() throws Exception {
+    void diezAlumnosInscritosPeleanTresVacantesAlPagarMatricula_soloTresGanan() throws Exception {
 
         Seccion seccion = crearSeccion("X", 3);
         List<Alumno> alumnos = crearAlumnos(10);
 
-        Resultado r = enParalelo(10, i ->
-                () -> matriculaService.matricular(
-                        new MatriculaRequest(alumnos.get(i).getId(), seccion.getId()), "test"));
+        List<MatriculaResponse> inscripciones = new ArrayList<>();
+        for (Alumno a : alumnos) {
+            inscripciones.add(matriculaService.inscribir(new MatriculaRequest(a.getId(), seccion.getId()), "test"));
+        }
 
-        assertEquals(3, r.exitos.get(), "Solo deben entrar 3 alumnos");
-        assertEquals(7, r.sinVacante.get(), "Los otros 7 deben ser rechazados");
+        // Los 10 intentan pagar el Derecho de Matricula a la vez (bloqueo pesimista sobre la seccion)
+        Resultado r = enParalelo(10, i ->
+                () -> pagoService.pagarMatricula(inscripciones.get(i).id(), null, "cajero"));
+
+        assertEquals(3, r.exitos.get(), "Solo deben pagar y formalizar matricula 3 alumnos");
+        assertEquals(7, r.sinVacante.get(), "Los otros 7 deben ser rechazados por falta de vacantes");
         assertEquals(0, vacantes(seccion));
-        assertEquals(3, matriculaRepository.countBySeccionIdAndEstado(seccion.getId(), EstadoMatricula.ACTIVA));
+        assertEquals(3, matriculaRepository.countBySeccionIdAndEstado(seccion.getId(), EstadoMatricula.MATRICULADA));
     }
 
     @Test
-    void mismoAlumnoEnDosSeccionesALaVez_soloUnaMatricula() throws Exception {
+    void mismoAlumnoEnDosSeccionesALaVez_soloUnaInscripcion() throws Exception {
 
         Seccion s1 = crearSeccion("Y", 5);
         Seccion s2 = crearSeccion("W", 5);
@@ -60,11 +67,10 @@ class MatriculaConcurrenciaTest {
         List<Seccion> destinos = List.of(s1, s2, s1, s2, s1, s2);
 
         Resultado r = enParalelo(destinos.size(), i ->
-                () -> matriculaService.matricular(
+                () -> matriculaService.inscribir(
                         new MatriculaRequest(alumno.getId(), destinos.get(i).getId()), "test"));
 
-        assertEquals(1, r.exitos.get(), "Un alumno solo puede tener una matricula por anio");
-        assertEquals(9, vacantes(s1) + vacantes(s2), "Solo se debe consumir una vacante en total");
+        assertEquals(1, r.exitos.get(), "Un alumno solo puede tener una inscripcion o matricula por anio");
     }
 
     @Test
@@ -74,11 +80,13 @@ class MatriculaConcurrenciaTest {
         Seccion b = crearSeccion("R", 10);
         List<Alumno> alumnos = crearAlumnos(6);
 
-        // 3 alumnos en A y 3 en B
+        // 3 alumnos en A y 3 en B, formalizados con matricula pagada
         List<MatriculaResponse> matriculas = new ArrayList<>();
         for (int i = 0; i < alumnos.size(); i++) {
             Seccion s = i % 2 == 0 ? a : b;
-            matriculas.add(matriculaService.matricular(new MatriculaRequest(alumnos.get(i).getId(), s.getId()), "test"));
+            MatriculaResponse ins = matriculaService.inscribir(new MatriculaRequest(alumnos.get(i).getId(), s.getId()), "test");
+            pagoService.pagarMatricula(ins.id(), null, "test");
+            matriculas.add(ins);
         }
 
         // Todos se cruzan a la vez: los de A van a B y los de B van a A
@@ -91,6 +99,41 @@ class MatriculaConcurrenciaTest {
         assertEquals(6, r.exitos.get(), "Con bloqueo ordenado por id, ningun traslado debe fallar");
         assertEquals(7, vacantes(a));
         assertEquals(7, vacantes(b));
+    }
+
+    @Test
+    void pagoSecuencialMensualidades_respetaOrdenPrelatorio() {
+        Seccion seccion = crearSeccion("Z", 10);
+        Alumno alumno = crearAlumnos(1).getFirst();
+
+        // 1) Inscribir alumno
+        MatriculaResponse ins = matriculaService.inscribir(new MatriculaRequest(alumno.getId(), seccion.getId()), "test");
+
+        // 2) Pagar Derecho de Matricula -> formaliza y crea las 10 cuotas
+        pagoService.pagarMatricula(ins.id(), null, "cajero");
+
+        var cc = pagoService.obtenerCuentaCorriente(ins.id());
+        assertEquals(10, cc.cuotas().size());
+        assertEquals("Marzo", cc.cuotas().get(0).mes());
+        assertEquals(true, cc.cuotas().get(0).pagable());
+        assertEquals(false, cc.cuotas().get(1).pagable(), "Abril no debe ser pagable si Marzo no esta pagado");
+
+        // Intentar pagar Abril directamente debe lanzar excepcion de negocio
+        org.junit.jupiter.api.Assertions.assertThrows(NegocioException.class, () ->
+                pagoService.pagarCuota(cc.cuotas().get(1).id(), null, "cajero"));
+
+        // Pagar Marzo
+        pagoService.pagarCuota(cc.cuotas().get(0).id(), null, "cajero");
+
+        // Ahora Abril si debe ser pagable
+        var ccDespues = pagoService.obtenerCuentaCorriente(ins.id());
+        assertEquals(EstadoCuota.PAGADO, ccDespues.cuotas().get(0).estado());
+        assertEquals(true, ccDespues.cuotas().get(1).pagable());
+
+        // Pagar Abril
+        pagoService.pagarCuota(ccDespues.cuotas().get(1).id(), null, "cajero");
+        var ccFinal = pagoService.obtenerCuentaCorriente(ins.id());
+        assertEquals(EstadoCuota.PAGADO, ccFinal.cuotas().get(1).estado());
     }
 
     // =========================================================

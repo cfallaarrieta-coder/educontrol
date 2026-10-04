@@ -61,50 +61,58 @@ public class MatriculaService {
                 .toList();
     }
 
-    /** Nomina (alumnos matriculados activos) de una seccion. */
+    /** Nomina (alumnos con matricula formalizada y pagada) de una seccion. */
     @Transactional(readOnly = true)
     public List<MatriculaResponse> nomina(Integer seccionId) {
         return matriculaRepository
                 .findBySeccionIdAndEstadoOrderByAlumnoApellidosAscAlumnoNombresAsc(
-                        seccionId, EstadoMatricula.ACTIVA)
+                        seccionId, EstadoMatricula.MATRICULADA)
                 .stream()
                 .map(MatriculaResponse::desde)
                 .toList();
     }
 
     // =========================================================
-    // MATRICULAR
+    // INSCRIBIR / MATRICULAR
     // =========================================================
     @Transactional
     public MatriculaResponse matricular(MatriculaRequest request, String usuario) {
+        return inscribir(request, usuario);
+    }
 
-        // 1) Bloquea al alumno: nadie mas puede matricularlo en paralelo.
+    @Transactional
+    public MatriculaResponse inscribir(MatriculaRequest request, String usuario) {
+
+        // 1) Bloquea al alumno: nadie mas puede inscribirlo en paralelo.
         Alumno alumno = alumnoRepository.findByIdParaMatricula(request.alumnoId())
                 .orElseThrow(() -> new NegocioException("El alumno no existe"));
 
-        // 2) Bloquea la seccion: SELECT ... FOR UPDATE.
-        //    Si otra secretaria esta matriculando en esta seccion, se ESPERA aqui.
-        Seccion seccion = seccionRepository.findByIdParaActualizar(request.seccionId())
+        // 2) Obtiene la seccion
+        Seccion seccion = seccionRepository.findById(request.seccionId())
                 .orElseThrow(() -> new NegocioException("La seccion no existe"));
 
         validarAnioAbierto(seccion);
 
         AnioEscolar anio = seccion.getAnioEscolar();
-        if (matriculaRepository.existsByAlumnoIdAndSeccionAnioEscolarIdAndEstado(
-                alumno.getId(), anio.getId(), EstadoMatricula.ACTIVA)) {
+        if (matriculaRepository.existsByAlumnoIdAndSeccionAnioEscolarIdAndEstadoIn(
+                alumno.getId(), anio.getId(), List.of(EstadoMatricula.INSCRITA, EstadoMatricula.MATRICULADA))) {
             throw new NegocioException(alumno.getNombreCompleto()
-                    + " ya tiene una matricula activa en el anio " + anio.getAnio());
+                    + " ya tiene un registro de matricula o inscripcion en el anio " + anio.getAnio());
+        }
+
+        // Verificacion preventiva de vacantes disponibles
+        if (seccion.getVacantesDisponibles() <= 0) {
+            throw new NegocioException("La seccion " + seccion.getDescripcion() + " ya no cuenta con vacantes disponibles");
         }
 
         pausaDemo();
 
-        // 3) Con la fila bloqueada, este valor es el REAL: nadie mas lo puede cambiar.
-        seccion.ocuparVacante();
+        // 3) La inscripcion NO descuenta vacante todavia.
+        // La vacante se ocupara con bloqueo pesimista al confirmar el pago del Derecho de Matricula.
+        Matricula matricula = matriculaRepository.save(new Matricula(alumno, seccion, usuario, EstadoMatricula.INSCRITA));
 
-        Matricula matricula = matriculaRepository.save(new Matricula(alumno, seccion, usuario));
-
-        avisar(List.of(seccion), usuario + " matriculo a " + alumno.getNombreCompleto()
-                + " en " + seccion.getDescripcion());
+        avisar(List.of(seccion), usuario + " inscribio a " + alumno.getNombreCompleto()
+                + " en " + seccion.getDescripcion() + " (pendiente de pago de matricula)");
 
         return MatriculaResponse.desde(matricula);
     }
@@ -115,11 +123,10 @@ public class MatriculaService {
     @Transactional
     public MatriculaResponse anular(Integer matriculaId, String usuario) {
 
-        // Bloquea la matricula: si dos personas la anulan a la vez,
-        // la segunda espera y luego ve que ya esta ANULADA.
+        // Bloquea la matricula
         Matricula matricula = bloquearMatricula(matriculaId);
 
-        if (!matricula.estaActiva()) {
+        if (matricula.estaAnulada()) {
             throw new NegocioException("La matricula ya estaba anulada");
         }
 
@@ -129,10 +136,13 @@ public class MatriculaService {
         validarAnioAbierto(seccion);
         pausaDemo();
 
-        seccion.liberarVacante();
+        // Si estaba formalizada (MATRICULADA), devuelve la vacante que habia ocupado
+        if (matricula.getEstado() == EstadoMatricula.MATRICULADA) {
+            seccion.liberarVacante();
+        }
         matricula.setEstado(EstadoMatricula.ANULADA);
 
-        avisar(List.of(seccion), usuario + " anulo la matricula de "
+        avisar(List.of(seccion), usuario + " anulo el registro de "
                 + matricula.getAlumno().getNombreCompleto() + " (" + seccion.getDescripcion() + ")");
 
         return MatriculaResponse.desde(matricula);
@@ -146,8 +156,8 @@ public class MatriculaService {
 
         Matricula matricula = bloquearMatricula(matriculaId);
 
-        if (!matricula.estaActiva()) {
-            throw new NegocioException("Solo se puede trasladar una matricula activa");
+        if (matricula.estaAnulada()) {
+            throw new NegocioException("No se puede trasladar una matricula anulada");
         }
 
         Integer origenId = matricula.getSeccion().getId();
@@ -172,8 +182,14 @@ public class MatriculaService {
         validarAnioAbierto(destino);
         pausaDemo();
 
-        destino.ocuparVacante();     // si no hay vacante, falla y NO se toca el origen (rollback)
-        origen.liberarVacante();
+        if (matricula.getEstado() == EstadoMatricula.MATRICULADA) {
+            destino.ocuparVacante();     // si no hay vacante, falla y NO se toca el origen (rollback)
+            origen.liberarVacante();
+        } else {
+            if (destino.getVacantesDisponibles() <= 0) {
+                throw new NegocioException("La seccion destino " + destino.getDescripcion() + " no tiene vacantes disponibles");
+            }
+        }
         matricula.setSeccion(destino);
 
         avisar(List.of(origen, destino), usuario + " traslado a "

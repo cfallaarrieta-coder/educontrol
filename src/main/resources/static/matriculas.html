@@ -31,9 +31,10 @@
             <div class="campo"><label for="seccion">Sección</label><select id="seccion"></select></div>
             <div class="campo"><label for="estado">Estado</label>
                 <select id="estado">
-                    <option value="ACTIVA">Activas</option>
-                    <option value="ANULADA">Anuladas</option>
-                    <option value="">Todas</option>
+                    <option value="">Todos</option>
+                    <option value="MATRICULADA">Matriculados</option>
+                    <option value="INSCRITA">Inscritos (Pendientes de pago)</option>
+                    <option value="ANULADA">Anulados</option>
                 </select>
             </div>
         </div>
@@ -80,23 +81,37 @@
         $('#total').text(matriculas.length + ' registro(s)');
 
         if (!matriculas.length) {
-            $('#tabla').html('<tr><td colspan="7" class="vacio">No hay matrículas con esos filtros</td></tr>');
+            $('#tabla').html('<tr><td colspan="7" class="vacio">No hay registros con esos filtros</td></tr>');
             return;
         }
 
         $('#tabla').html(matriculas.map(function (m) {
-            var activa = m.estado === 'ACTIVA';
+            var esMatriculada = m.estado === 'MATRICULADA';
+            var esInscrita = m.estado === 'INSCRITA';
+            var noAnulada = m.estado !== 'ANULADA';
+
+            var claseBadge = esMatriculada ? 'et-verde' : (esInscrita ? 'et-amarillo' : 'et-gris');
+
+            var btnCaja = noAnulada
+                ? '<a href="pagos.html?matriculaId=' + m.id + '" class="btn btn-chico ' + (esInscrita ? 'btn-verde' : 'btn-gris') + '" style="text-decoration:none; margin-right:4px;">💳 ' + (esInscrita ? 'Cobrar Matrícula' : 'Caja / Pagos') + '</a>'
+                : '';
+
+            var btnTrasladar = noAnulada
+                ? '<button type="button" class="btn-chico btn-naranja btn-trasladar" data-id="' + m.id + '">Trasladar</button>'
+                : '';
+
+            var btnAnular = noAnulada
+                ? '<button type="button" class="btn-chico btn-rojo btn-anular" data-id="' + m.id + '">Anular</button>'
+                : '';
+
             return '<tr>' +
                 '<td>' + App.fecha(m.fecha) + '</td>' +
                 '<td><b>' + App.escapar(m.alumno) + '</b></td>' +
                 '<td>' + App.escapar(m.alumnoDni) + '</td>' +
                 '<td>' + App.escapar(m.seccion) + '</td>' +
-                '<td><span class="etiqueta ' + (activa ? 'et-verde' : 'et-gris') + '">' + App.nombre(m.estado) + '</span></td>' +
+                '<td><span class="etiqueta ' + claseBadge + '">' + App.nombre(m.estado) + '</span></td>' +
                 '<td>' + App.escapar(m.registradoPor) + '</td>' +
-                '<td class="acciones">' + (activa
-                    ? '<button type="button" class="btn-chico btn-naranja btn-trasladar" data-id="' + m.id + '">Trasladar</button>' +
-                      '<button type="button" class="btn-chico btn-rojo btn-anular" data-id="' + m.id + '">Anular</button>'
-                    : '') + '</td>' +
+                '<td class="acciones">' + btnCaja + btnTrasladar + btnAnular + '</td>' +
                 '</tr>';
         }).join(''));
     }

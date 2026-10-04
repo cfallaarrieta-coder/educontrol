@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Nueva matrícula · Colegio Matrícula</title>
+    <title>Inscribir alumno · Colegio Matrícula</title>
     <link rel="stylesheet" href="css/estilos.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
@@ -30,8 +30,8 @@
 
     <div class="cabecera">
         <div>
-            <h1>Nueva matrícula</h1>
-            <p>1) Elige al alumno · 2) Elige la sección. Las vacantes cambian en vivo si otra persona matricula.</p>
+            <h1>Inscribir alumno</h1>
+            <p>1) Elige al alumno · 2) Elige la sección para su inscripción. El pago del Derecho de Matrícula formalizará su vacante en Caja.</p>
         </div>
     </div>
 
@@ -90,9 +90,9 @@
                 <ul class="feed" id="feed"><li class="vacio">Esperando actividad...</li></ul>
             </div>
             <div class="nota">
-                <b>Bloqueo pesimista:</b> al presionar <i>Matricular</i>, el servidor bloquea la fila de la
-                sección (<code>SELECT ... FOR UPDATE</code>). Si dos personas toman la última vacante a la vez,
-                la segunda espera y luego recibe <i>"sin vacantes"</i>. Nunca hay sobrecupo.
+                <b>Flujo de Inscripción y Matrícula:</b> al presionar <i>Inscribir</i>, el alumno queda en estado
+                <b>Inscrito</b>. La vacante se ocupa y la matrícula se formaliza en el módulo de
+                <a href="pagos.html"><b>Caja y Pagos</b></a> al cancelar el Derecho de Matrícula (con bloqueo pesimista contra sobrecupos).
             </div>
         </div>
     </div>
@@ -171,7 +171,7 @@
                 '<td class="c-ocupacion">' + App.ocupacion(s.vacantesDisponibles, s.vacantesMaximas) + '</td>' +
                 '<td class="c-vacantes">' + App.etiquetaVacantes(s.vacantesDisponibles) + '</td>' +
                 '<td class="acciones"><button type="button" class="btn-chico btn-verde btn-matricular" data-id="' + s.id + '"' +
-                (!alumno || s.vacantesDisponibles === 0 ? ' disabled' : '') + '>Matricular</button></td>' +
+                (!alumno || s.vacantesDisponibles === 0 ? ' disabled' : '') + '>Inscribir</button></td>' +
                 '</tr>';
         }).join(''));
     }
@@ -186,7 +186,7 @@
     $('#anio').on('change', cargarSecciones);
 
     // =========================================================
-    // MATRICULAR -> POST /api/matriculas
+    // INSCRIBIR -> POST /api/matriculas
     // =========================================================
     $('#secciones').on('click', '.btn-matricular', function () {
         var $btn = $(this);
@@ -196,8 +196,11 @@
 
         App.api('POST', '/api/matriculas', { alumnoId: alumno.id, seccionId: seccion.id })
             .done(function (m) {
-                App.toast('✔ ' + m.alumno + ' matriculado en ' + m.seccion, 'ok');
+                App.toast('✔ ' + m.alumno + ' inscrito en ' + m.seccion + '. Redirigiendo a Caja para pago de matrícula...', 'ok');
                 elegirAlumno(null);
+                setTimeout(function () {
+                    window.location.href = 'pagos.html?matriculaId=' + m.id;
+                }, 1200);
             })
             .fail(function (xhr) {
                 if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');

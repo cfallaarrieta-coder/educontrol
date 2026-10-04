@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Caja y Pagos · Colegio Matrícula</title>
+    <link rel="stylesheet" href="css/estilos.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+    <script src="js/app.js"></script>
+    <style>
+        .dos-columnas-pagos { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+        @media (max-width: 900px) { .dos-columnas-pagos { grid-template-columns: 1fr; } }
+        .resultados-alumnos { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--borde); border-radius: 5px; max-height: 260px; overflow-y: auto; background:#fff; }
+        .resultados-alumnos:empty { display: none; }
+        .resultados-alumnos li { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f0f2f5; }
+        .resultados-alumnos li:hover { background-color: #eef3fa; }
+        .resultados-alumnos small { color: #888; }
+        .resumen-alumno { background: #fdfdfd; border: 1px solid var(--borde); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .resumen-alumno h3 { margin: 0 0 6px; font-size: 16px; color: var(--azul); }
+        .tarjeta-caja { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 18px; margin-bottom: 18px; }
+        .tarjeta-caja.destacada { border-left: 5px solid var(--acento); }
+        .tarjeta-caja.pagada { border-left: 5px solid var(--verde); background-color: #f7fbf8; }
+        .badge-debe { background: #fdecea; color: var(--rojo); padding: 3px 8px; border-radius: 10px; font-weight: bold; font-size: 11px; }
+        .badge-pagado { background: #e7f6ec; color: var(--verde); padding: 3px 8px; border-radius: 10px; font-weight: bold; font-size: 11px; }
+        .badge-bloqueado { background: #eee; color: #777; padding: 3px 8px; border-radius: 10px; font-size: 11px; }
+        .alerta-info { background: #eef4fc; border-left: 4px solid var(--azul-claro); padding: 12px 14px; border-radius: 4px; font-size: 13px; margin: 10px 0; }
+        .alerta-warning { background: #fff8e1; border-left: 4px solid var(--acento); padding: 12px 14px; border-radius: 4px; font-size: 13px; margin: 10px 0; }
+        .grid-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .kpi-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; text-align: center; }
+        .kpi-box .val { font-size: 18px; font-weight: bold; color: var(--azul); }
+        .kpi-box .lbl { font-size: 11px; color: #64748b; text-transform: uppercase; }
+
+        /* Estilos del Recibo Imprimible */
+        .recibo-impresion {
+            border: 2px dashed #94a3b8;
+            padding: 24px;
+            background: #fff;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            color: #1e293b;
+        }
+        .recibo-cabecera { text-align: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 12px; margin-bottom: 14px; }
+        .recibo-cabecera h2 { margin: 0; font-size: 18px; }
+        .recibo-fila { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+        .recibo-total { border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; margin: 12px 0; font-size: 16px; font-weight: bold; }
+        @media print {
+            body * { visibility: hidden; }
+            #areaImpresionRecibo, #areaImpresionRecibo * { visibility: visible; }
+            #areaImpresionRecibo { position: fixed; left: 0; top: 0; width: 100%; border: none; }
+            .no-imprimir { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="navbar"></div>
+
+<main class="contenedor">
+
+    <div class="cabecera no-imprimir">
+        <div>
+            <h1>Gestión Económica y Caja</h1>
+            <p>Cobro de derecho de matrícula, apertura y seguimiento de cuenta corriente mensual (Marzo a Diciembre).</p>
+        </div>
+    </div>
+
+    <div class="dos-columnas-pagos">
+
+        <!-- COLUMNA IZQUIERDA: BUSCADOR DE ALUMNO / INSCRIPCIÓN -->
+        <div class="no-imprimir">
+            <div class="panel">
+                <h2>1. Buscar Alumno</h2>
+                <div class="campo">
+                    <label for="buscarAlumno">DNI o Apellidos</label>
+                    <input type="search" id="buscarAlumno" placeholder="Escribe DNI o apellido..." autocomplete="off">
+                    <ul class="resultados-alumnos" id="listaResultados"></ul>
+                </div>
+
+                <div id="panelAlumnoSeleccionado" hidden style="margin-top: 16px;">
+                    <div class="resumen-alumno">
+                        <small style="color: #64748b; text-transform: uppercase; font-weight: bold;">Alumno seleccionado</small>
+                        <h3 id="txtAlumnoNombre" style="margin-top:4px;"></h3>
+                        <div style="font-size: 13px; color: #475569; line-height: 1.4;">
+                            <div><b>DNI:</b> <span id="txtAlumnoDni"></span></div>
+                            <div><b>Sección:</b> <span id="txtSeccion"></span></div>
+                            <div><b>Año escolar:</b> <span id="txtAnio"></span></div>
+                            <div style="margin-top:6px;">
+                                <b>Estado:</b> <span id="badgeEstado"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <h3 style="font-size: 14px; margin-bottom: 8px; color: var(--azul);">Últimos Recibos</h3>
+                    <div id="ultimosRecibos" style="font-size: 12px; color: #666;">Cargando recibos...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: CAJA / CUENTA CORRIENTE -->
+        <div>
+
+            <!-- ESTADO INICIAL VACIO -->
+            <div class="panel" id="vistaVacia">
+                <div class="vacio" style="padding: 60px 20px;">
+                    <div style="font-size: 42px; margin-bottom: 10px;">💳</div>
+                    <h3>Selecciona un alumno o inscripción</h3>
+                    <p style="color: #666; max-width: 420px; margin: 0 auto;">
+                        Usa el buscador de la izquierda o entra desde la lista de matrículas para gestionar el cobro de matrícula y sus mensualidades.
+                    </p>
+                </div>
+            </div>
+
+            <!-- VISTA DETALLADA DEL ALUMNO -->
+            <div id="vistaDetalle" hidden>
+
+                <!-- 1. DERECHO DE MATRÍCULA -->
+                <div class="tarjeta-caja destacada" id="boxMatricula">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0 0 4px; font-size:17px; color:var(--azul);">Derecho de Matrícula</h2>
+                            <p style="margin:0; color:#64748b; font-size:13px;">
+                                Formaliza la matrícula, ocupa vacante definitiva y apertura las 10 cuotas mensuales.
+                            </p>
+                        </div>
+                        <div style="text-align:right;">
+                            <span style="font-size: 20px; font-weight: bold; color: var(--azul);" id="txtMontoMatricula">S/ 100.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Estado INSCRITO (Pendiente de pago) -->
+                    <div id="seccionCobrarMatricula" style="margin-top: 14px;">
+                        <div class="alerta-warning">
+                            ⚠️ El alumno está en estado <b>Inscrito</b>. La vacante se ocupará formalmente en la sección al procesar este pago.
+                        </div>
+                        <div class="fila" style="align-items:flex-end; margin-top:12px;">
+                            <div class="campo" style="max-width: 200px;">
+                                <label for="metodoPagoMatricula">Método de Pago</label>
+                                <select id="metodoPagoMatricula">
+                                    <option value="EFECTIVO">Efectivo</option>
+                                    <option value="TRANSFERENCIA">Transferencia</option>
+                                    <option value="TARJETA">Tarjeta</option>
+                                    <option value="YAPE/PLIN">Yape / Plin</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button type="button" class="btn-verde" id="btnPagarMatricula">
+                                    💳 Cobrar Matrícula (<span class="monto-mat-btn">S/ 100.00</span>)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estado MATRICULADO (Ya pagó) -->
+                    <div id="seccionMatriculaPagada" hidden style="margin-top: 14px;">
+                        <div class="alerta-info" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                ✅ <b>Derecho de matrícula cancelado</b> · Recibo: <b id="lblReciboMatricula"></b> · Fecha: <span id="lblFechaMatricula"></span>
+                            </div>
+                            <button type="button" class="btn-gris btn-chico" id="btnVerReciboMatricula">📄 Ver Recibo</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. CUENTA CORRIENTE - MENSUALIDADES -->
+                <div class="panel" id="boxCuentaCorriente">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+                        <div>
+                            <h2 style="margin:0; font-size:16px; color:var(--azul);">Cuenta Corriente · 10 Mensualidades (Marzo a Diciembre)</h2>
+                            <p style="margin:2px 0 0; color:#64748b; font-size:12px;">
+                                Orden preliminar estricto: cada mes requiere que el mes anterior figure como PAGADO.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Si está solo INSCRITO -->
+                    <div id="avisoCuentaBloqueada" class="alerta-warning" hidden>
+                        🔒 <b>Cuenta corriente no aperturada:</b> Las 10 cuotas mensuales se habilitarán automáticamente en cuanto se cobre el Derecho de Matrícula.
+                    </div>
+
+                    <!-- Si está MATRICULADO -->
+                    <div id="detalleCuotas" hidden>
+                        <div class="grid-kpis">
+                            <div class="kpi-box">
+                                <div class="val" id="kpiCuotasTotal">10</div>
+                                <div class="lbl">Cuotas Anuales</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="val" style="color:var(--verde);" id="kpiCuotasPagadas">0</div>
+                                <div class="lbl">Canceladas</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="val" style="color:var(--naranja);" id="kpiCuotasPendientes">10</div>
+                                <div class="lbl">Pendientes</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="val" style="color:var(--verde);" id="kpiTotalPagado">S/ 0.00</div>
+                                <div class="lbl">Total Pagado</div>
+                            </div>
+                            <div class="kpi-box">
+                                <div class="val" style="color:var(--rojo);" id="kpiTotalDeuda">S/ 0.00</div>
+                                <div class="lbl">Deuda Total</div>
+                            </div>
+                        </div>
+
+                        <div class="tabla-scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>N°</th>
+                                        <th>Mes</th>
+                                        <th>Monto</th>
+                                        <th>Vencimiento</th>
+                                        <th>Estado</th>
+                                        <th>Recibo</th>
+                                        <th style="text-align:right;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaCuotas"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+<!-- MODAL DE RECIBO DE PAGO -->
+<div class="modal-fondo no-imprimir" id="modalRecibo" hidden>
+    <div class="modal" style="max-width: 500px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; font-size:16px;">Comprobante de Caja</h2>
+            <button type="button" class="btn-gris btn-chico" id="btnCerrarModalRecibo">✕</button>
+        </div>
+
+        <div id="areaImpresionRecibo" class="recibo-impresion">
+            <div class="recibo-cabecera">
+                <h2>🏫 COLEGIO MATRÍCULA</h2>
+                <div style="font-size:11px; color:#64748b;">SISTEMA DE GESTIÓN ECONÓMICA</div>
+                <div style="font-size:14px; font-weight:bold; margin-top:6px;" id="recNumero">REC-000000</div>
+            </div>
+
+            <div class="recibo-fila">
+                <span>Fecha y Hora:</span>
+                <b id="recFecha"></b>
+            </div>
+            <div class="recibo-fila">
+                <span>Cajero / Usuario:</span>
+                <span id="recCajero"></span>
+            </div>
+            <div class="recibo-fila">
+                <span>Método de Pago:</span>
+                <span id="recMetodo">EFECTIVO</span>
+            </div>
+
+            <hr style="border:none; border-top:1px dashed #cbd5e1; margin:8px 0;">
+
+            <div class="recibo-fila">
+                <span>Alumno:</span>
+                <b id="recAlumno"></b>
+            </div>
+            <div class="recibo-fila">
+                <span>DNI Alumno:</span>
+                <span id="recDni"></span>
+            </div>
+            <div class="recibo-fila">
+                <span>Sección:</span>
+                <span id="recSeccion"></span>
+            </div>
+
+            <div class="recibo-total">
+                <div class="recibo-fila" style="margin:0;">
+                    <span id="recConcepto">Concepto</span>
+                    <span id="recMonto">S/ 0.00</span>
+                </div>
+            </div>
+
+            <div style="text-align:center; font-size:11px; color:#64748b; margin-top:12px;">
+                ¡Gracias por su puntualidad en los pagos!
+            </div>
+        </div>
+
+        <div class="modal-botones" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+            <button type="button" class="btn-gris" id="btnImprimirRecibo">🖨 Imprimir</button>
+            <button type="button" class="btn" id="btnListoRecibo">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    var matriculaActualId = null;
+    var cuentaActual = null;
+
+    function cargarCuenta(id) {
+        if (!id) return;
+        matriculaActualId = id;
+
+        App.api('GET', '/api/pagos/cuenta/' + id)
+            .done(function (data) {
+                cuentaActual = data;
+                renderizarCuenta(data);
+                cargarUltimosRecibos(id);
+            })
+            .fail(function (xhr) {
+                App.toast(App.mensajeError(xhr), 'error');
+            });
+    }
+
+    function renderizarCuenta(cc) {
+        $('#vistaVacia').hide();
+        $('#vistaDetalle').show();
+        $('#panelAlumnoSeleccionado').show();
+
+        // Datos del alumno
+        $('#txtAlumnoNombre').text(cc.alumnoNombre);
+        $('#txtAlumnoDni').text(cc.alumnoDni);
+        $('#txtSeccion').text(cc.seccionDescripcion);
+        $('#txtAnio').text(cc.anio);
+
+        // Badge de estado
+        if (cc.estadoMatricula === 'MATRICULADA') {
+            $('#badgeEstado').html('<span class="badge-pagado">Matriculado</span>');
+        } else if (cc.estadoMatricula === 'INSCRITA') {
+            $('#badgeEstado').html('<span class="badge-debe" style="background:#fff3cd; color:#856404;">Inscrito (Pendiente de Matrícula)</span>');
+        } else {
+            $('#badgeEstado').html('<span class="badge-debe">Anulada</span>');
+        }
+
+        // 1. Bloque Derecho de Matrícula
+        $('#txtMontoMatricula').text('S/ ' + Number(cc.costoMatricula).toFixed(2));
+        $('.monto-mat-btn').text('S/ ' + Number(cc.costoMatricula).toFixed(2));
+
+        if (cc.matriculaPagada) {
+            $('#boxMatricula').removeClass('destacada').addClass('pagada');
+            $('#seccionCobrarMatricula').hide();
+            $('#seccionMatriculaPagada').show();
+            $('#lblReciboMatricula').text(cc.reciboMatriculaNumero || 'S/N');
+            $('#lblFechaMatricula').text(App.fecha(cc.fechaPagoMatricula));
+            $('#btnVerReciboMatricula').off('click').on('click', function () {
+                if (cc.reciboMatriculaId) mostrarReciboModal(cc.reciboMatriculaId);
+            });
+        } else {
+            $('#boxMatricula').removeClass('pagada').addClass('destacada');
+            $('#seccionCobrarMatricula').show();
+            $('#seccionMatriculaPagada').hide();
+        }
+
+        // 2. Bloque Cuenta Corriente (Mensualidades)
+        if (!cc.matriculaPagada) {
+            $('#avisoCuentaBloqueada').show();
+            $('#detalleCuotas').hide();
+        } else {
+            $('#avisoCuentaBloqueada').hide();
+            $('#detalleCuotas').show();
+
+            var pagadas = cc.cuotas.filter(function (c) { return c.estado === 'PAGADO'; }).length;
+            var pendientes = cc.cuotas.length - pagadas;
+
+            $('#kpiCuotasTotal').text(cc.cuotas.length);
+            $('#kpiCuotasPagadas').text(pagadas);
+            $('#kpiCuotasPendientes').text(pendientes);
+            $('#kpiTotalPagado').text('S/ ' + Number(cc.totalPagado).toFixed(2));
+            $('#kpiTotalDeuda').text('S/ ' + Number(cc.totalDeuda).toFixed(2));
+
+            var $tbody = $('#tablaCuotas').empty();
+            if (!cc.cuotas.length) {
+                $tbody.append('<tr><td colspan="7" class="vacio">No hay cuotas configuradas</td></tr>');
+            } else {
+                cc.cuotas.forEach(function (c) {
+                    var estadoHtml = c.estado === 'PAGADO'
+                        ? '<span class="badge-pagado">PAGADO</span>'
+                        : '<span class="badge-debe">DEBE</span>';
+
+                    var reciboHtml = c.reciboNumero ? '<b>' + c.reciboNumero + '</b>' : '—';
+
+                    var accionHtml = '';
+                    if (c.estado === 'PAGADO') {
+                        accionHtml = '<button type="button" class="btn-gris btn-chico btn-ver-recibo" data-recibo="' + c.reciboId + '">📄 Recibo</button>';
+                    } else if (c.pagable) {
+                        accionHtml = '<button type="button" class="btn-verde btn-chico btn-cobrar-cuota" data-id="' + c.id + '" data-mes="' + c.mes + '" data-monto="' + c.monto + '">💳 Cobrar S/ ' + Number(c.monto).toFixed(2) + '</button>';
+                    } else {
+                        accionHtml = '<button type="button" class="btn-gris btn-chico" disabled title="Debe cancelar el mes anterior primero">🔒 Bloqueado</button>';
+                    }
+
+                    $tbody.append(
+                        '<tr>' +
+                        '  <td>' + c.numeroCuota + '</td>' +
+                        '  <td><b>' + c.mes + '</b></td>' +
+                        '  <td>S/ ' + Number(c.monto).toFixed(2) + '</td>' +
+                        '  <td>' + (c.fechaVencimiento ? App.fecha(c.fechaVencimiento) : '—') + '</td>' +
+                        '  <td>' + estadoHtml + '</td>' +
+                        '  <td>' + reciboHtml + '</td>' +
+                        '  <td style="text-align:right;">' + accionHtml + '</td>' +
+                        '</tr>'
+                    );
+                });
+            }
+        }
+    }
+
+    function cobrarMatricula() {
+        if (!matriculaActualId) return;
+        var metodo = $('#metodoPagoMatricula').val();
+
+        $('#btnPagarMatricula').prop('disabled', true).text('Procesando...');
+
+        App.api('POST', '/api/pagos/matricula/' + matriculaActualId, { metodoPago: metodo })
+            .done(function (recibo) {
+                App.toast('✅ Derecho de matrícula pagado con éxito. Se generaron las 10 mensualidades.', 'ok');
+                mostrarReciboModal(recibo.id);
+                cargarCuenta(matriculaActualId);
+            })
+            .fail(function (xhr) {
+                App.toast(App.mensajeError(xhr), 'error');
+            })
+            .always(function () {
+                $('#btnPagarMatricula').prop('disabled', false).html('💳 Cobrar Matrícula (<span class="monto-mat-btn">' + ($('#txtMontoMatricula').text()) + '</span>)');
+            });
+    }
+
+    function cobrarCuota(cuotaId, mes, monto) {
+        if (!confirm('¿Confirmar cobro de la mensualidad de ' + mes + ' por S/ ' + Number(monto).toFixed(2) + '?')) {
+            return;
+        }
+
+        App.api('POST', '/api/pagos/cuota/' + cuotaId, { metodoPago: 'EFECTIVO' })
+            .done(function (recibo) {
+                App.toast('✅ Mensualidad de ' + mes + ' cancelada con éxito.', 'ok');
+                mostrarReciboModal(recibo.id);
+                cargarCuenta(matriculaActualId);
+            })
+            .fail(function (xhr) {
+                App.toast(App.mensajeError(xhr), 'error');
+            });
+    }
+
+    function mostrarReciboModal(reciboId) {
+        App.api('GET', '/api/pagos/recibos/' + reciboId)
+            .done(function (r) {
+                $('#recNumero').text(r.numero);
+                $('#recFecha').text(App.fecha(r.fecha));
+                $('#recCajero').text(r.cajero);
+                $('#recMetodo').text(r.metodoPago || 'EFECTIVO');
+                $('#recAlumno').text(r.alumnoNombre);
+                $('#recDni').text(r.alumnoDni);
+                $('#recSeccion').text(r.seccionDescripcion);
+                $('#recConcepto').text(r.concepto);
+                $('#recMonto').text('S/ ' + Number(r.monto).toFixed(2));
+
+                $('#modalRecibo').show();
+            })
+            .fail(function (xhr) {
+                App.toast('No se pudo cargar el recibo', 'error');
+            });
+    }
+
+    function cargarUltimosRecibos(matriculaId) {
+        var url = '/api/pagos/recibos' + (matriculaId ? '?matriculaId=' + matriculaId : '');
+        App.api('GET', url).done(function (lista) {
+            if (!lista.length) {
+                $('#ultimosRecibos').html('<em>No hay recibos registrados</em>');
+                return;
+            }
+            var html = lista.slice(0, 5).map(function (r) {
+                return '<div style="padding:6px 0; border-bottom:1px solid #eee;">' +
+                       '  <b>' + r.numero + '</b> - S/ ' + Number(r.monto).toFixed(2) + '<br>' +
+                       '  <span style="color:#555;">' + r.concepto + '</span><br>' +
+                       '  <a href="#" class="link-rec" data-id="' + r.id + '" style="font-size:11px;">Ver comprobante</a>' +
+                       '</div>';
+            }).join('');
+            $('#ultimosRecibos').html(html);
+        });
+    }
+
+    $(document).ready(function () {
+
+        // Buscador de alumno
+        var timerBusqueda;
+        $('#buscarAlumno').on('input', function () {
+            clearTimeout(timerBusqueda);
+            var q = $(this).val().trim();
+            if (q.length < 2) {
+                $('#listaResultados').empty();
+                return;
+            }
+            timerBusqueda = setTimeout(function () {
+                App.api('GET', '/api/matriculas?q=' + encodeURIComponent(q)).done(function (res) {
+                    var $ul = $('#listaResultados').empty();
+                    if (!res.length) {
+                        $ul.append('<li><small>No se encontraron inscripciones ni matrículas</small></li>');
+                        return;
+                    }
+                    res.forEach(function (m) {
+                        var estColor = m.estado === 'MATRICULADA' ? 'green' : (m.estado === 'INSCRITA' ? '#d97706' : 'red');
+                        var $li = $('<li>')
+                            .html('<b>' + App.escapar(m.alumno) + '</b> (DNI: ' + m.alumnoDni + ')<br>' +
+                                  '<small>' + m.seccion + ' · Estado: <span style="color:' + estColor + '; font-weight:bold;">' + App.nombre(m.estado) + '</span></small>')
+                            .on('click', function () {
+                                $('#listaResultados').empty();
+                                $('#buscarAlumno').val(m.alumno);
+                                cargarCuenta(m.id);
+                            });
+                        $ul.append($li);
+                    });
+                });
+            }, 300);
+        });
+
+        // Cobrar Matricula
+        $('#btnPagarMatricula').on('click', cobrarMatricula);
+
+        // Cobrar Cuota mensual
+        $(document).on('click', '.btn-cobrar-cuota', function () {
+            var cuotaId = $(this).data('id');
+            var mes = $(this).data('mes');
+            var monto = $(this).data('monto');
+            cobrarCuota(cuotaId, mes, monto);
+        });
+
+        // Ver recibo desde tabla de cuotas
+        $(document).on('click', '.btn-ver-recibo', function () {
+            var rId = $(this).data('recibo');
+            mostrarReciboModal(rId);
+        });
+
+        // Ver recibo desde lista lateral
+        $(document).on('click', '.link-rec', function (e) {
+            e.preventDefault();
+            mostrarReciboModal($(this).data('id'));
+        });
+
+        // Modal Recibo
+        $('#btnCerrarModalRecibo, #btnListoRecibo').on('click', function () {
+            $('#modalRecibo').hide();
+        });
+        $('#btnImprimirRecibo').on('click', function () {
+            window.print();
+        });
+
+        // Iniciar sesion y websocket
+        App.iniciar().then(function () {
+            // Parametro URL: ?matriculaId=123
+            var params = new URLSearchParams(window.location.search);
+            var mId = params.get('matriculaId');
+            if (mId) {
+                cargarCuenta(Number(mId));
+            } else {
+                cargarUltimosRecibos();
+            }
+
+            // WebSocket: si cambian vacantes o se realizan pagos, refrescar cuenta actual si esta abierta
+            App.escuchar('/topic/vacantes', function () {
+                if (matriculaActualId) cargarCuenta(matriculaActualId);
+            });
+        });
+
+    });
+</script>
+
+</body>
+</html>

@@ -27,11 +27,12 @@ var App = (function () {
             ]
         },
         {
-            texto: 'Matrícula', hijos: [
-                { texto: 'Nueva matrícula', href: 'matricula.html' },
-                { texto: 'Lista de matrículas', href: 'matriculas.html' }
+            texto: 'Inscripción', hijos: [
+                { texto: 'Inscribir alumno', href: 'matricula.html' },
+                { texto: 'Lista de inscripciones', href: 'matriculas.html' }
             ]
         },
+        { texto: 'Pagos y Caja', href: 'pagos.html' },
         { texto: 'Reportes', href: 'reportes.html' }
     ];
 
@@ -40,7 +41,8 @@ var App = (function () {
         INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria',
         MANANA: 'Mañana', TARDE: 'Tarde',
         ABIERTO: 'Abierto', CERRADO: 'Cerrado',
-        ACTIVA: 'Activa', ANULADA: 'Anulada'
+        INSCRITA: 'Inscrito', MATRICULADA: 'Matriculado', ANULADA: 'Anulada',
+        DEBE: 'Debe', PAGADO: 'Pagado'
     };
 
     // =========================================================

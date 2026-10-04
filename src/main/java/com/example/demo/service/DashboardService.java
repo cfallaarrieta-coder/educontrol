@@ -50,7 +50,7 @@ public class DashboardService {
         return new DashboardResponse(
                 anio.getAnio(),
                 alumnos,
-                matriculaRepository.countBySeccionAnioEscolarIdAndEstado(anio.getId(), EstadoMatricula.ACTIVA),
+                matriculaRepository.countBySeccionAnioEscolarIdAndEstado(anio.getId(), EstadoMatricula.MATRICULADA),
                 seccionRepository.sumarVacantesDisponibles(anio.getId()),
                 seccionRepository.countByAnioEscolarId(anio.getId()),
                 seccionRepository.countByAnioEscolarIdAndVacantesDisponibles(anio.getId(), 0),
