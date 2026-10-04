@@ -315,9 +315,11 @@
     }
 
     function renderizarCuenta(cc) {
-        $('#vistaVacia').hide();
-        $('#vistaDetalle').show();
-        $('#panelAlumnoSeleccionado').show();
+        // Nota: estilos.css define [hidden]{display:none !important}, por eso se usa
+        // prop('hidden') y no show()/hide() de jQuery.
+        $('#vistaVacia').prop('hidden', true);
+        $('#vistaDetalle').prop('hidden', false);
+        $('#panelAlumnoSeleccionado').prop('hidden', false);
 
         // Datos del alumno
         $('#txtAlumnoNombre').text(cc.alumnoNombre);
@@ -340,8 +342,8 @@
 
         if (cc.matriculaPagada) {
             $('#boxMatricula').removeClass('destacada').addClass('pagada');
-            $('#seccionCobrarMatricula').hide();
-            $('#seccionMatriculaPagada').show();
+            $('#seccionCobrarMatricula').prop('hidden', true);
+            $('#seccionMatriculaPagada').prop('hidden', false);
             $('#lblReciboMatricula').text(cc.reciboMatriculaNumero || 'S/N');
             $('#lblFechaMatricula').text(App.fecha(cc.fechaPagoMatricula));
             $('#btnVerReciboMatricula').off('click').on('click', function () {
@@ -349,17 +351,17 @@
             });
         } else {
             $('#boxMatricula').removeClass('pagada').addClass('destacada');
-            $('#seccionCobrarMatricula').show();
-            $('#seccionMatriculaPagada').hide();
+            $('#seccionCobrarMatricula').prop('hidden', false);
+            $('#seccionMatriculaPagada').prop('hidden', true);
         }
 
         // 2. Bloque Cuenta Corriente (Mensualidades)
         if (!cc.matriculaPagada) {
-            $('#avisoCuentaBloqueada').show();
-            $('#detalleCuotas').hide();
+            $('#avisoCuentaBloqueada').prop('hidden', false);
+            $('#detalleCuotas').prop('hidden', true);
         } else {
-            $('#avisoCuentaBloqueada').hide();
-            $('#detalleCuotas').show();
+            $('#avisoCuentaBloqueada').prop('hidden', true);
+            $('#detalleCuotas').prop('hidden', false);
 
             var pagadas = cc.cuotas.filter(function (c) { return c.estado === 'PAGADO'; }).length;
             var pendientes = cc.cuotas.length - pagadas;
@@ -455,7 +457,7 @@
                 $('#recConcepto').text(r.concepto);
                 $('#recMonto').text('S/ ' + Number(r.monto).toFixed(2));
 
-                $('#modalRecibo').show();
+                $('#modalRecibo').prop('hidden', false);
             })
             .fail(function (xhr) {
                 App.toast('No se pudo cargar el recibo', 'error');
@@ -510,6 +512,9 @@
                             });
                         $ul.append($li);
                     });
+                }).fail(function (xhr) {
+                    $('#listaResultados').empty();
+                    App.toast(App.mensajeError(xhr), 'error');
                 });
             }, 300);
         });
@@ -539,7 +544,7 @@
 
         // Modal Recibo
         $('#btnCerrarModalRecibo, #btnListoRecibo').on('click', function () {
-            $('#modalRecibo').hide();
+            $('#modalRecibo').prop('hidden', true);
         });
         $('#btnImprimirRecibo').on('click', function () {
             window.print();
