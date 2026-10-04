@@ -45,10 +45,38 @@
         .recibo-fila { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
         .recibo-total { border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; margin: 12px 0; font-size: 16px; font-weight: bold; }
         @media print {
-            body * { visibility: hidden; }
-            #areaImpresionRecibo, #areaImpresionRecibo * { visibility: visible; }
-            #areaImpresionRecibo { position: fixed; left: 0; top: 0; width: 100%; border: none; }
-            .no-imprimir { display: none !important; }
+            .navbar, #toasts, .no-imprimir, .contenedor {
+                display: none !important;
+            }
+            body {
+                background: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .modal-fondo {
+                position: static !important;
+                background: transparent !important;
+                padding: 0 !important;
+                display: block !important;
+                inset: auto !important;
+                overflow: visible !important;
+            }
+            .modal {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+                margin: 0 auto !important;
+                background: transparent !important;
+            }
+            .recibo-impresion {
+                border: 2px dashed #475569 !important;
+                padding: 24px !important;
+                max-width: 460px !important;
+                margin: 20px auto !important;
+                background: #fff !important;
+                page-break-inside: avoid !important;
+            }
         }
     </style>
 </head>
@@ -234,9 +262,9 @@
 </main>
 
 <!-- MODAL DE RECIBO DE PAGO -->
-<div class="modal-fondo no-imprimir" id="modalRecibo" hidden>
+<div class="modal-fondo" id="modalRecibo" hidden>
     <div class="modal" style="max-width: 500px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div class="no-imprimir" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h2 style="margin:0; font-size:16px;">Comprobante de Caja</h2>
             <button type="button" class="btn-gris btn-chico" id="btnCerrarModalRecibo">✕</button>
         </div>
@@ -288,7 +316,7 @@
             </div>
         </div>
 
-        <div class="modal-botones" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <div class="modal-botones no-imprimir" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
             <button type="button" class="btn-gris" id="btnImprimirRecibo">🖨 Imprimir</button>
             <button type="button" class="btn" id="btnListoRecibo">Cerrar</button>
         </div>
