@@ -32,6 +32,20 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
 
     boolean existsBySeccionId(Integer seccionId);
 
+    /** Hay matriculas vigentes (no anuladas) en la seccion. */
+    boolean existsBySeccionIdAndEstadoNot(Integer seccionId, EstadoMatricula estado);
+
+    /** Hay matriculas vigentes (no anuladas) en el anio escolar. */
+    boolean existsBySeccionAnioEscolarIdAndEstadoNot(Integer anioId, EstadoMatricula estado);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Matricula m where m.seccion.id = :seccionId")
+    int eliminarPorSeccion(Integer seccionId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Matricula m where m.seccion.id in (select s.id from Seccion s where s.anioEscolar.id = :anioId)")
+    int eliminarPorAnio(Integer anioId);
+
     boolean existsByAlumnoId(Integer alumnoId);
 
     @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar", "reciboMatricula"})

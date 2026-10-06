@@ -33,4 +33,8 @@ public interface ReciboRepository extends JpaRepository<Recibo, Integer> {
 
     @Query("select coalesce(max(r.id), 0) from Recibo r")
     Integer obtenerUltimoId();
+
+    boolean existsByMatriculaSeccionId(Integer seccionId);
+
+    boolean existsByMatriculaSeccionAnioEscolarId(Integer anioId);
 }

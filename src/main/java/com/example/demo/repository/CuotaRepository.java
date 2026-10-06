@@ -4,6 +4,8 @@ import com.example.demo.entity.Cuota;
 import com.example.demo.entity.EstadoCuota;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,4 +24,13 @@ public interface CuotaRepository extends JpaRepository<Cuota, Integer> {
     long countByMatriculaIdAndEstado(Integer matriculaId, EstadoCuota estado);
 
     void deleteByMatriculaId(Integer matriculaId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Cuota c where c.matricula.id in (select m.id from Matricula m where m.seccion.id = :seccionId)")
+    int eliminarPorSeccion(Integer seccionId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Cuota c where c.matricula.id in "
+            + "(select m.id from Matricula m where m.seccion.anioEscolar.id = :anioId)")
+    int eliminarPorAnio(Integer anioId);
 }

@@ -49,6 +49,10 @@ public interface SeccionRepository extends JpaRepository<Seccion, Integer> {
 
     long countByAnioEscolarId(Integer anioId);
 
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from Seccion s where s.anioEscolar.id = :anioId")
+    int eliminarPorAnio(Integer anioId);
+
     long countByAnioEscolarIdAndVacantesDisponibles(Integer anioId, Integer vacantes);
 
     @Query("select coalesce(sum(s.vacantesDisponibles), 0) from Seccion s where s.anioEscolar.id = :anioId")

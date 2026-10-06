@@ -5,6 +5,7 @@ import com.example.demo.dto.SeccionResponse;
 import com.example.demo.dto.VacanteMensaje;
 import com.example.demo.entity.AnioEscolar;
 import com.example.demo.entity.Docente;
+import com.example.demo.entity.EstadoMatricula;
 import com.example.demo.entity.Grado;
 import com.example.demo.entity.Seccion;
 import com.example.demo.exception.NegocioException;
@@ -24,6 +25,8 @@ public class SeccionService {
     private final GradoRepository gradoRepository;
     private final DocenteRepository docenteRepository;
     private final MatriculaRepository matriculaRepository;
+    private final CuotaRepository cuotaRepository;
+    private final ReciboRepository reciboRepository;
     private final ApplicationEventPublisher eventos;
 
     public SeccionService(SeccionRepository seccionRepository,
@@ -31,12 +34,16 @@ public class SeccionService {
                           GradoRepository gradoRepository,
                           DocenteRepository docenteRepository,
                           MatriculaRepository matriculaRepository,
+                          CuotaRepository cuotaRepository,
+                          ReciboRepository reciboRepository,
                           ApplicationEventPublisher eventos) {
         this.seccionRepository = seccionRepository;
         this.anioRepository = anioRepository;
         this.gradoRepository = gradoRepository;
         this.docenteRepository = docenteRepository;
         this.matriculaRepository = matriculaRepository;
+        this.cuotaRepository = cuotaRepository;
+        this.reciboRepository = reciboRepository;
         this.eventos = eventos;
     }
 
@@ -119,11 +126,20 @@ public class SeccionService {
 
     @Transactional
     public void eliminar(Integer id) {
-        if (matriculaRepository.existsBySeccionId(id)) {
-            throw new NegocioException("No se puede eliminar: la seccion tiene matriculas registradas");
+        seccionRepository.findById(id)
+                .orElseThrow(() -> new NegocioException("No existe la seccion " + id));
+
+        if (matriculaRepository.existsBySeccionIdAndEstadoNot(id, EstadoMatricula.ANULADA)) {
+            throw new NegocioException("No se puede eliminar: la seccion tiene matriculas vigentes");
         }
-        seccionRepository.delete(seccionRepository.findById(id)
-                .orElseThrow(() -> new NegocioException("No existe la seccion " + id)));
+        if (reciboRepository.existsByMatriculaSeccionId(id)) {
+            throw new NegocioException("No se puede eliminar: la seccion tiene pagos registrados");
+        }
+
+        // Solo quedan matriculas ANULADAS sin pagos: se eliminan con la seccion
+        cuotaRepository.eliminarPorSeccion(id);
+        matriculaRepository.eliminarPorSeccion(id);
+        seccionRepository.deleteById(id);
     }
 
     private AnioEscolar buscarAnio(Integer id) {
