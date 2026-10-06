@@ -26,6 +26,7 @@ public class DataSeeder implements CommandLineRunner {
     private final MatriculaRepository matriculaRepository;
     private final com.example.demo.service.PagoService pagoService;
     private final PasswordEncoder passwordEncoder;
+    private final com.example.demo.repository.TarifaRepository tarifaRepository;
 
     public DataSeeder(UsuarioRepository usuarioRepository,
                       AnioEscolarRepository anioRepository,
@@ -35,7 +36,8 @@ public class DataSeeder implements CommandLineRunner {
                       AlumnoRepository alumnoRepository,
                       MatriculaRepository matriculaRepository,
                       com.example.demo.service.PagoService pagoService,
-                      PasswordEncoder passwordEncoder) {
+                      PasswordEncoder passwordEncoder,
+                      com.example.demo.repository.TarifaRepository tarifaRepository) {
         this.usuarioRepository = usuarioRepository;
         this.anioRepository = anioRepository;
         this.gradoRepository = gradoRepository;
@@ -45,6 +47,7 @@ public class DataSeeder implements CommandLineRunner {
         this.matriculaRepository = matriculaRepository;
         this.pagoService = pagoService;
         this.passwordEncoder = passwordEncoder;
+        this.tarifaRepository = tarifaRepository;
     }
 
     /** Se ejecuta una sola vez, justo despues de arrancar la aplicacion. */
@@ -56,9 +59,18 @@ public class DataSeeder implements CommandLineRunner {
         List<Grado> grados = grados();
         List<Docente> docentes = docentes();
         secciones(anio, grados, docentes);
+        tarifas(anio);
         alumnos();
         migrarMatriculasAntiguas();
         inscripcionesYPagos(anio);
+    }
+
+    private void tarifas(AnioEscolar anio) {
+        if (!tarifaRepository.existsByAnioEscolarId(anio.getId())) {
+            tarifaRepository.save(new Tarifa(anio, Nivel.INICIAL, new java.math.BigDecimal("100"), new java.math.BigDecimal("200")));
+            tarifaRepository.save(new Tarifa(anio, Nivel.PRIMARIA, new java.math.BigDecimal("100"), new java.math.BigDecimal("200")));
+            tarifaRepository.save(new Tarifa(anio, Nivel.SECUNDARIA, new java.math.BigDecimal("100"), new java.math.BigDecimal("200")));
+        }
     }
 
     /** Matriculas creadas antes del modulo de pagos (estado ACTIVA) pasan a MATRICULADA. */

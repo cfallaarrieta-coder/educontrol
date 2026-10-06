@@ -7,6 +7,7 @@ import com.example.demo.repository.CuotaRepository;
 import com.example.demo.repository.MatriculaRepository;
 import com.example.demo.repository.ReciboRepository;
 import com.example.demo.repository.SeccionRepository;
+import com.example.demo.repository.TarifaRepository;
 import com.example.demo.websocket.VacantesCambiadasEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class PagoService {
     private final SeccionRepository seccionRepository;
     private final ReciboRepository reciboRepository;
     private final CuotaRepository cuotaRepository;
+    private final TarifaRepository tarifaRepository;
     private final ApplicationEventPublisher eventos;
 
     private static final String[] MESES = {
@@ -35,11 +37,13 @@ public class PagoService {
                        SeccionRepository seccionRepository,
                        ReciboRepository reciboRepository,
                        CuotaRepository cuotaRepository,
+                       TarifaRepository tarifaRepository,
                        ApplicationEventPublisher eventos) {
         this.matriculaRepository = matriculaRepository;
         this.seccionRepository = seccionRepository;
         this.reciboRepository = reciboRepository;
         this.cuotaRepository = cuotaRepository;
+        this.tarifaRepository = tarifaRepository;
         this.eventos = eventos;
     }
 
@@ -51,7 +55,10 @@ public class PagoService {
         Matricula matricula = matriculaRepository.findById(matriculaId)
                 .orElseThrow(() -> new NegocioException("No existe la matricula " + matriculaId));
 
-        BigDecimal costoMatricula = matricula.getSeccion().getGrado().getCostoMatriculaOrDefault();
+        BigDecimal costoMatricula = tarifaRepository.findByAnioEscolarIdAndNivel(
+                matricula.getSeccion().getAnioEscolar().getId(), 
+                matricula.getSeccion().getGrado().getNivel()
+        ).map(Tarifa::getMontoMatricula).orElse(BigDecimal.ZERO);
         boolean matriculaPagada = matricula.getEstado() == EstadoMatricula.MATRICULADA;
         Recibo reciboMatricula = matricula.getReciboMatricula();
 
@@ -128,10 +135,13 @@ public class PagoService {
             throw new NegocioException("El anio escolar " + seccion.getAnioEscolar().getAnio() + " esta cerrado");
         }
 
+        Tarifa tarifa = tarifaRepository.findByAnioEscolarIdAndNivel(seccion.getAnioEscolar().getId(), seccion.getGrado().getNivel())
+                .orElseThrow(() -> new NegocioException("No hay tarifas configuradas para el nivel " + seccion.getGrado().getNivel() + " en este año escolar."));
+
         // BLOQUEO PESIMISTA: ocupa la vacante real de la seccion
         seccion.ocuparVacante();
 
-        BigDecimal monto = seccion.getGrado().getCostoMatriculaOrDefault();
+        BigDecimal monto = tarifa.getMontoMatricula();
         String concepto = "Derecho de Matricula " + seccion.getAnioEscolar().getAnio();
         String metodo = request != null ? request.metodoPago() : "EFECTIVO";
 
@@ -144,7 +154,7 @@ public class PagoService {
 
         // Generar las 10 cuotas mensuales (Marzo a Diciembre)
         int anio = seccion.getAnioEscolar().getAnio();
-        BigDecimal costoMensual = seccion.getGrado().getCostoMensualidadOrDefault();
+        BigDecimal costoMensual = tarifa.getMontoMensualidad();
         List<Cuota> cuotas = new ArrayList<>();
 
         for (int i = 0; i < 10; i++) {

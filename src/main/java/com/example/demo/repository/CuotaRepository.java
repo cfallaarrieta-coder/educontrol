@@ -30,7 +30,12 @@ public interface CuotaRepository extends JpaRepository<Cuota, Integer> {
     int eliminarPorSeccion(Integer seccionId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("delete from Cuota c where c.matricula.id in "
-            + "(select m.id from Matricula m where m.seccion.anioEscolar.id = :anioId)")
+    @Query("delete from Cuota c where c.matricula.id in (select m.id from Matricula m where m.seccion.anioEscolar.id = :anioId)")
     int eliminarPorAnio(Integer anioId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Cuota c set c.monto = :nuevoMonto " +
+           "where c.estado = :estado and c.matricula.id in " +
+           "(select m.id from Matricula m where m.seccion.anioEscolar.id = :anioId and m.seccion.grado.nivel = :nivel)")
+    int actualizarMontoPendientes(Integer anioId, com.example.demo.entity.Nivel nivel, EstadoCuota estado, java.math.BigDecimal nuevoMonto);
 }

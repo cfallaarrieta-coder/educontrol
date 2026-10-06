@@ -10,6 +10,7 @@ import com.example.demo.repository.CuotaRepository;
 import com.example.demo.repository.MatriculaRepository;
 import com.example.demo.repository.ReciboRepository;
 import com.example.demo.repository.SeccionRepository;
+import com.example.demo.repository.TarifaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,17 +24,20 @@ public class AnioEscolarService {
     private final MatriculaRepository matriculaRepository;
     private final CuotaRepository cuotaRepository;
     private final ReciboRepository reciboRepository;
+    private final TarifaRepository tarifaRepository;
 
     public AnioEscolarService(AnioEscolarRepository anioRepository,
                               SeccionRepository seccionRepository,
                               MatriculaRepository matriculaRepository,
                               CuotaRepository cuotaRepository,
-                              ReciboRepository reciboRepository) {
+                              ReciboRepository reciboRepository,
+                              TarifaRepository tarifaRepository) {
         this.anioRepository = anioRepository;
         this.seccionRepository = seccionRepository;
         this.matriculaRepository = matriculaRepository;
         this.cuotaRepository = cuotaRepository;
         this.reciboRepository = reciboRepository;
+        this.tarifaRepository = tarifaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -81,10 +85,11 @@ public class AnioEscolarService {
             throw new NegocioException("No se puede eliminar: el anio escolar tiene pagos registrados");
         }
 
-        // Orden por llaves foraneas: cuota -> matricula -> seccion -> anio_escolar
+        // Orden por llaves foraneas: cuota -> matricula -> seccion -> tarifa -> anio_escolar
         cuotaRepository.eliminarPorAnio(id);
         matriculaRepository.eliminarPorAnio(id);
         seccionRepository.eliminarPorAnio(id);
+        tarifaRepository.deleteByAnioEscolarId(id);
         anioRepository.deleteById(id);
     }
 

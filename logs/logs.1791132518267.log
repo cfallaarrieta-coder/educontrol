@@ -1,0 +1,18 @@
+2026-10-04T15:54:17.677249971Z [inf]  Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/ffdc6ff2-2f5b-4314-b314-7d1c0ac256d8/vol_0qviwabvojzhvpot
+2026-10-04T15:54:17.677274608Z [inf]  Starting Container
+2026-10-04T15:54:18.065641469Z [inf]  2026-10-04 15:54:17+00:00 [Note] [Entrypoint]: Switching to dedicated user 'mysql'
+2026-10-04T15:54:18.065648879Z [inf]  2026-10-04 15:54:17+00:00 [Note] [Entrypoint]: Entrypoint script for MySQL Server 9.7.2-1.el9 started.
+2026-10-04T15:54:18.065653619Z [inf]  '/var/lib/mysql/mysql.sock' -> '/var/run/mysqld/mysqld.sock'
+2026-10-04T15:54:18.065685809Z [inf]  2026-10-04 15:54:17+00:00 [Note] [Entrypoint]: Entrypoint script for MySQL Server 9.7.2-1.el9 started.
+2026-10-04T15:54:18.199586404Z [err]  2026-10-04T15:54:18.189972Z 0 [System] [MY-015603] [Server] MySQL Server has access to 48 logical CPUs.
+2026-10-04T15:54:18.199593104Z [err]  2026-10-04T15:54:18.190038Z 0 [System] [MY-015603] [Server] MySQL Server has access to 528154595328 bytes of physical memory.
+2026-10-04T15:54:18.199597414Z [err]  2026-10-04T15:54:18.194732Z 1 [System] [MY-013576] [InnoDB] InnoDB initialization has started.
+2026-10-04T15:54:18.199609143Z [err]  2026-10-04T15:54:18.067661Z 0 [System] [MY-015015] [Server] MySQL Server - start.
+2026-10-04T15:54:18.199619613Z [err]  2026-10-04T15:54:18.189929Z 0 [Warning] [MY-015655] [Server] Server ignores the discovered container restrictions as --container_aware is OFF
+2026-10-04T15:54:18.199624383Z [err]  2026-10-04T15:54:18.189957Z 0 [System] [MY-010116] [Server] /usr/sbin/mysqld (mysqld 9.7.2) starting as process 1
+2026-10-04T15:54:19.236639245Z [err]  2026-10-04T15:54:19.215398Z 1 [System] [MY-013577] [InnoDB] InnoDB initialization has ended.
+2026-10-04T15:54:19.503037521Z [err]  2026-10-04T15:54:19.483976Z 0 [Warning] [MY-010068] [Server] CA certificate ca.pem is self signed.
+2026-10-04T15:54:19.503041511Z [err]  2026-10-04T15:54:19.484003Z 0 [System] [MY-013602] [Server] Channel mysql_main configured to support TLS. Encrypted connections are now supported for this channel.
+2026-10-04T15:54:19.503045411Z [err]  2026-10-04T15:54:19.486138Z 0 [Warning] [MY-011810] [Server] Insecure configuration for --pid-file: Location '/var/run/mysqld' in the path is accessible to all OS users. Consider choosing a different directory.
+2026-10-04T15:54:19.537476142Z [err]  2026-10-04T15:54:19.528932Z 0 [System] [MY-011323] [Server] X Plugin ready for connections. Bind-address: '::' port: 33060, socket: /var/run/mysqld/mysqlx.sock
+2026-10-04T15:54:19.537481922Z [err]  2026-10-04T15:54:19.528961Z 0 [System] [MY-010931] [Server] /usr/sbin/mysqld: ready for connections. Version: '9.7.2'  socket: '/var/run/mysqld/mysqld.sock'  port: 3306  MySQL Community Server - GPL.

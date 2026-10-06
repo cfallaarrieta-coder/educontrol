@@ -22,6 +22,7 @@ var App = (function () {
                 { texto: 'Docentes', href: 'docentes.html' },
                 { texto: 'Grados', href: 'grados.html' },
                 { texto: 'Secciones', href: 'secciones.html' },
+                { texto: 'Tarifas', href: 'tarifas.html', admin: true },
                 { texto: 'Años escolares', href: 'anios.html', admin: true },
                 { texto: 'Usuarios', href: 'usuarios.html', admin: true }
             ]

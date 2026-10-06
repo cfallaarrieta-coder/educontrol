@@ -66,32 +66,40 @@ public class Grado {
         this.orden = orden;
     }
 
+    @Deprecated
     @Column(name = "costo_matricula", precision = 10, scale = 2)
     private java.math.BigDecimal costoMatricula;
 
+    @Deprecated
     @Column(name = "costo_mensualidad", precision = 10, scale = 2)
     private java.math.BigDecimal costoMensualidad;
 
+    @Deprecated
     public java.math.BigDecimal getCostoMatricula() {
         return costoMatricula;
     }
 
+    @Deprecated
     public void setCostoMatricula(java.math.BigDecimal costoMatricula) {
         this.costoMatricula = costoMatricula;
     }
 
+    @Deprecated
     public java.math.BigDecimal getCostoMensualidad() {
         return costoMensualidad;
     }
 
+    @Deprecated
     public void setCostoMensualidad(java.math.BigDecimal costoMensualidad) {
         this.costoMensualidad = costoMensualidad;
     }
 
+    @Deprecated
     public java.math.BigDecimal getCostoMatriculaOrDefault() {
         return costoMatricula != null ? costoMatricula : new java.math.BigDecimal("100.00");
     }
 
+    @Deprecated
     public java.math.BigDecimal getCostoMensualidadOrDefault() {
         return costoMensualidad != null ? costoMensualidad : new java.math.BigDecimal("200.00");
     }

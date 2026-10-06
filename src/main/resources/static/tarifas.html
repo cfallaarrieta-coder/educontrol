@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Tarifas | EduControl</title>
+    <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<div class="app-contenedor">
+    <nav class="sidebar" id="sidebar"></nav>
+
+    <main class="contenido-principal">
+        <header class="header-top">
+            <button id="btnMenuToggle" class="btn-menu">☰</button>
+            <div class="header-info">
+                <h1>Gestión de Tarifas</h1>
+            </div>
+            <div id="usuarioActual" class="usuario-actual"></div>
+        </header>
+
+        <div class="panel" style="margin-top:20px;">
+            <div class="filtros-barra">
+                <div class="filtro-grupo">
+                    <label for="cboAnio">Año Escolar:</label>
+                    <select id="cboAnio" class="input-control"></select>
+                </div>
+                <button type="button" id="btnCopiar" class="btn-secundario" style="margin-left:auto;">Copiar de otro año...</button>
+            </div>
+
+            <div class="tabla-scroll" style="margin-top: 15px;">
+                <table class="tabla" id="tablaTarifas">
+                    <thead>
+                    <tr>
+                        <th>Nivel</th>
+                        <th class="col-num">Derecho Matrícula</th>
+                        <th class="col-num">Mensualidad (10 cuotas)</th>
+                        <th class="col-acciones">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <!-- JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Modal Tarifa -->
+<div class="modal" id="modalTarifa">
+    <div class="modal-contenido" style="max-width: 450px;">
+        <div class="modal-header">
+            <h2 id="modalTitulo">Editar Tarifa</h2>
+            <button type="button" class="btn-cerrar" onclick="App.cerrarModal('modalTarifa')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="frmTarifa">
+                <input type="hidden" id="txtNivel">
+                <div class="form-grupo">
+                    <label>Nivel:</label>
+                    <input type="text" id="txtNivelLabel" class="input-control" readonly style="background:#f5f5f5;">
+                </div>
+                <div class="form-grupo">
+                    <label for="txtMatricula">Derecho de Matrícula (S/):</label>
+                    <input type="number" id="txtMatricula" class="input-control" step="0.01" min="0" required>
+                </div>
+                <div class="form-grupo">
+                    <label for="txtMensualidad">Mensualidad (S/):</label>
+                    <input type="number" id="txtMensualidad" class="input-control" step="0.01" min="0" required>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-secundario" onclick="App.cerrarModal('modalTarifa')">Cancelar</button>
+            <button type="submit" form="frmTarifa" class="btn-primario">Guardar Tarifa</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Copiar -->
+<div class="modal" id="modalCopiar">
+    <div class="modal-contenido" style="max-width: 400px;">
+        <div class="modal-header">
+            <h2>Copiar Tarifas</h2>
+            <button type="button" class="btn-cerrar" onclick="App.cerrarModal('modalCopiar')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>Se copiarán las tarifas hacia el año <b id="lblAnioDestino"></b>.</p>
+            <div class="form-grupo">
+                <label for="cboAnioOrigen">Copiar desde el año:</label>
+                <select id="cboAnioOrigen" class="input-control"></select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-secundario" onclick="App.cerrarModal('modalCopiar')">Cancelar</button>
+            <button type="button" id="btnConfirmarCopia" class="btn-primario">Copiar</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="js/app.js"></script>
+<script>
+    var anios = [];
+    var niveles = ['INICIAL', 'PRIMARIA', 'SECUNDARIA'];
+
+    $(document).ready(function() {
+        App.init({ soloAdmin: true });
+
+        // Cargar combos de años
+        App.get('/api/anios').done(function(res) {
+            anios = res;
+            var cbo = $('#cboAnio');
+            var cboOrigen = $('#cboAnioOrigen');
+            $.each(res, function(i, a) {
+                cbo.append(new Option(a.anio, a.id));
+                cboOrigen.append(new Option(a.anio, a.id));
+            });
+            if (res.length > 0) {
+                cargarTarifas();
+            }
+        });
+
+        $('#cboAnio').change(cargarTarifas);
+
+        $('#frmTarifa').submit(function(e) {
+            e.preventDefault();
+            var anioId = $('#cboAnio').val();
+            var nivel = $('#txtNivel').val();
+            var req = {
+                montoMatricula: $('#txtMatricula').val(),
+                montoMensualidad: $('#txtMensualidad').val()
+            };
+            App.put('/api/tarifas/' + anioId + '/' + nivel, req, $('#frmTarifa :submit'))
+                .done(function() {
+                    App.cerrarModal('modalTarifa');
+                    cargarTarifas();
+                });
+        });
+
+        $('#btnCopiar').click(function() {
+            $('#lblAnioDestino').text($('#cboAnio option:selected').text());
+            App.abrirModal('modalCopiar');
+        });
+
+        $('#btnConfirmarCopia').click(function() {
+            var destinoId = $('#cboAnio').val();
+            var origenId = $('#cboAnioOrigen').val();
+            if (destinoId === origenId) {
+                alert('Seleccione un año de origen distinto al destino.');
+                return;
+            }
+            App.post('/api/tarifas/copiar?origenId=' + origenId + '&destinoId=' + destinoId, null, $(this))
+                .done(function() {
+                    App.cerrarModal('modalCopiar');
+                    cargarTarifas();
+                });
+        });
+    });
+
+    function cargarTarifas() {
+        var anioId = $('#cboAnio').val();
+        if (!anioId) return;
+
+        App.get('/api/tarifas?anioId=' + anioId).done(function(res) {
+            var tbody = $('#tablaTarifas tbody').empty();
+            
+            // Mostrar los 3 niveles siempre
+            $.each(niveles, function(i, niv) {
+                var t = res.find(function(x) { return x.nivel === niv; });
+                var btnEditar = '<button type="button" class="btn-accion btn-editar" onclick="abrirEdicion(\'' + niv + '\', ' + (t ? t.montoMatricula : '') + ', ' + (t ? t.montoMensualidad : '') + ')">✏️ Editar</button>';
+                var btnAplicar = t ? '<button type="button" class="btn-accion btn-aplicar" onclick="aplicarMasivo(\'' + niv + '\', ' + t.montoMensualidad + ')">🔄 Aplicar a Deudas</button>' : '';
+
+                tbody.append('<tr>' +
+                    '<td>' + App.capitalizar(niv) + '</td>' +
+                    '<td class="col-num">' + (t ? 'S/ ' + Number(t.montoMatricula).toFixed(2) : '<span style="color:#999">No config.</span>') + '</td>' +
+                    '<td class="col-num">' + (t ? 'S/ ' + Number(t.montoMensualidad).toFixed(2) : '<span style="color:#999">No config.</span>') + '</td>' +
+                    '<td class="col-acciones">' + btnEditar + ' ' + btnAplicar + '</td>' +
+                '</tr>');
+            });
+        });
+    }
+
+    window.abrirEdicion = function(nivel, mat, men) {
+        $('#txtNivel').val(nivel);
+        $('#txtNivelLabel').val(App.capitalizar(nivel));
+        $('#txtMatricula').val(mat || '');
+        $('#txtMensualidad').val(men || '');
+        App.abrirModal('modalTarifa');
+    };
+
+    window.aplicarMasivo = function(nivel, monto) {
+        if (!confirm('¿Aplicar el nuevo monto (S/ ' + Number(monto).toFixed(2) + ') a todas las cuotas PENDIENTES de ' + App.capitalizar(nivel) + ' de este año?\n\nLos meses ya pagados no se alteran.')) return;
+        var anioId = $('#cboAnio').val();
+        App.post('/api/tarifas/' + anioId + '/' + nivel + '/aplicar', null).done(function(res) {
+            alert(res.mensaje);
+        });
+    };
+</script>
+</body>
+</html>
