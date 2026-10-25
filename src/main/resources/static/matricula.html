@@ -11,8 +11,10 @@
     <style>
         .resultados { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--borde); border-radius: 5px; max-height: 240px; overflow-y: auto; }
         .resultados:empty { display: none; }
-        .resultados li { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f0f2f5; }
+        .resultados li { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #f0f2f5; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         .resultados li:hover { background-color: #eef3fa; }
+        .resultados li.bloqueado { cursor: not-allowed; background-color: #f8f9fa; color: #888; }
+        .resultados li.bloqueado:hover { background-color: #f8f9fa; }
         .resultados small { color: #888; }
         .alumno-elegido { display: flex; justify-content: space-between; align-items: center; gap: 10px;
             background-color: #eef6ee; border: 1px solid #cfe6d4; border-radius: 6px; padding: 12px 14px; }
@@ -109,20 +111,39 @@
     // PASO 1: buscar y elegir alumno
     // =========================================================
     var temporizador;
+    function ejecutarBusquedaAlumno() {
+        var q = $('#buscarAlumno').val().trim();
+        if (q.length < 2) { $('#resultados').empty(); return; }
+
+        var anioId = $('#anio').val() || '';
+        var qs = $.param({ q: q, anioId: anioId });
+
+        App.api('GET', '/api/alumnos?' + qs).done(function (lista) {
+            $('#resultados').html(lista.slice(0, 10).map(function (a, i) {
+                var ocupado = a.situacion === 'MATRICULADA' || a.situacion === 'INSCRITA';
+                var etiqueta;
+                if (ocupado) {
+                    var verbo = a.situacion === 'MATRICULADA' ? 'matriculado' : 'inscrito';
+                    etiqueta = '<span class="etiqueta et-gris">Ya ' + verbo + ' en ' + App.escapar(a.seccionActual) + '</span>';
+                } else {
+                    var extra = a.tuvoAnulacionEnAnio ? ' (Anulada previa)' : '';
+                    etiqueta = '<span class="etiqueta et-verde">Disponible para inscribir' + extra + '</span>';
+                }
+
+                return '<li' + (ocupado ? ' class="bloqueado"' : ' data-i="' + i + '"') + '>' +
+                    '<span><b>' + App.escapar(a.nombreCompleto) + '</b> <small>DNI ' + App.escapar(a.dni) + '</small></span>' +
+                    etiqueta +
+                    '</li>';
+            }).join('') || '<li class="vacio">Sin resultados</li>');
+            $('#resultados').data('lista', lista);
+        });
+    }
+
     $('#buscarAlumno').on('input', function () {
         clearTimeout(temporizador);
         var q = $(this).val().trim();
         if (q.length < 2) { $('#resultados').empty(); return; }
-
-        temporizador = setTimeout(function () {
-            App.api('GET', '/api/alumnos?q=' + encodeURIComponent(q)).done(function (lista) {
-                $('#resultados').html(lista.slice(0, 10).map(function (a, i) {
-                    return '<li data-i="' + i + '"><b>' + App.escapar(a.nombreCompleto) + '</b> ' +
-                        '<small>DNI ' + App.escapar(a.dni) + '</small></li>';
-                }).join('') || '<li class="vacio">Sin resultados</li>');
-                $('#resultados').data('lista', lista);
-            });
-        }, 300);
+        temporizador = setTimeout(ejecutarBusquedaAlumno, 300);
     });
 
     $('#resultados').on('click', 'li[data-i]', function () {
@@ -130,6 +151,15 @@
     });
 
     function elegirAlumno(a) {
+        if (a && (a.situacion === 'MATRICULADA' || a.situacion === 'INSCRITA')) {
+            var verbo = a.situacion === 'MATRICULADA' ? 'matriculado' : 'inscrito';
+            App.toast('El alumno ' + a.nombreCompleto + ' ya está ' + verbo + ' en ' + a.seccionActual + ' en este año escolar.', 'error');
+            alumno = null;
+            $('#buscadorAlumno').prop('hidden', false);
+            $('#alumnoElegido').prop('hidden', true);
+            pintarSecciones();
+            return;
+        }
         alumno = a;
         $('#buscadorAlumno').prop('hidden', !!a);
         $('#alumnoElegido').prop('hidden', !a);
@@ -149,7 +179,7 @@
     // PASO 2: secciones con vacantes
     // =========================================================
     function cargarSecciones() {
-        App.api('GET', '/api/secciones?anioId=' + $('#anio').val()).done(function (lista) {
+        return App.api('GET', '/api/secciones?anioId=' + $('#anio').val()).done(function (lista) {
             secciones = lista;
             pintarSecciones();
         });
@@ -183,7 +213,15 @@
         pintarSecciones();
     });
 
-    $('#anio').on('change', cargarSecciones);
+    $('#anio').on('change', function () {
+        cargarSecciones();
+        if (alumno) {
+            App.api('GET', '/api/alumnos/' + alumno.id + '?anioId=' + $('#anio').val())
+                .done(function (a) { elegirAlumno(a); });
+        } else if ($('#buscarAlumno').val().trim().length >= 2) {
+            ejecutarBusquedaAlumno();
+        }
+    });
 
     // =========================================================
     // INSCRIBIR -> POST /api/matriculas
@@ -223,10 +261,24 @@
     }
 
     App.iniciar().then(function () {
+        var params = new URLSearchParams(window.location.search);
+        var urlAlumnoId = params.get('alumnoId');
+        var urlAnioId = params.get('anioId');
 
         App.opciones.anios().then(function (ops) {
             ops.forEach(function (o) { $('#anio').append($('<option>').val(o.valor).text(o.texto)); });
-            cargarSecciones();
+            if (urlAnioId && $('#anio option[value="' + urlAnioId + '"]').length) {
+                $('#anio').val(urlAnioId);
+            }
+            cargarSecciones().then(function () {
+                if (urlAlumnoId) {
+                    App.api('GET', '/api/alumnos/' + encodeURIComponent(urlAlumnoId) + '?anioId=' + ($('#anio').val() || ''))
+                        .done(function (a) { elegirAlumno(a); })
+                        .fail(function (xhr) { if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error'); });
+                } else {
+                    $('#buscarAlumno').focus();
+                }
+            });
         });
 
         App.escuchar('/topic/vacantes', alCambiarVacantes);
@@ -237,8 +289,6 @@
                 .append($('<time>').text(App.hora()))
                 .append(document.createTextNode(m.mensaje)));
         });
-
-        $('#buscarAlumno').focus();
     });
 
 </script>

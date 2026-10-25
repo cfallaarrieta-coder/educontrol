@@ -2,6 +2,7 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.AlumnoRequest;
 import com.example.demo.dto.AlumnoResponse;
+import com.example.demo.entity.SituacionAlumno;
 import com.example.demo.service.AlumnoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -19,15 +20,20 @@ public class AlumnoController {
         this.alumnoService = alumnoService;
     }
 
-    /** GET /api/alumnos?q=quispe  (sin q = todos) */
+    /** GET /api/alumnos?q=quispe&anioId=1&situacion=SIN_MATRICULA */
     @GetMapping
-    public List<AlumnoResponse> listar(@RequestParam(required = false) String q) {
-        return alumnoService.buscar(q);
+    public List<AlumnoResponse> listar(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer anioId,
+            @RequestParam(required = false) SituacionAlumno situacion) {
+        return alumnoService.buscar(q, anioId, situacion);
     }
 
     @GetMapping("/{id}")
-    public AlumnoResponse obtener(@PathVariable Integer id) {
-        return alumnoService.obtenerPorId(id);
+    public AlumnoResponse obtener(
+            @PathVariable Integer id,
+            @RequestParam(required = false) Integer anioId) {
+        return alumnoService.obtenerPorId(id, anioId);
     }
 
     @PostMapping

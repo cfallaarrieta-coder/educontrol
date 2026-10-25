@@ -43,6 +43,7 @@ var App = (function () {
         MANANA: 'Mañana', TARDE: 'Tarde',
         ABIERTO: 'Abierto', CERRADO: 'Cerrado',
         INSCRITA: 'Inscrito', MATRICULADA: 'Matriculado', ANULADA: 'Anulada',
+        SIN_MATRICULA: 'Sin inscripción',
         DEBE: 'Debe', PAGADO: 'Pagado'
     };
 
@@ -256,8 +257,9 @@ var App = (function () {
      *   contenedor: '#crud', url: '/api/alumnos', nombre: 'alumno',
      *   editable: true,                 // muestra Nuevo / Editar / Eliminar
      *   busqueda: 'q',                  // nombre del parametro de busqueda (o false)
-     *   filtros: [{ nombre, etiqueta, opciones: fn -> promesa [{valor,texto}], todos: 'Todos' }],
+     *   filtros: [{ nombre, id, etiqueta, opciones: fn -> promesa [{valor,texto}], todos: 'Todos' }],
      *   columnas: [{ titulo, valor: fn(fila) -> html }],
+     *   accionesExtra: fn(fila) -> html,
      *   campos: [{ nombre, etiqueta, tipo, requerido, opciones, numero, max, min, patron, ayuda, placeholder }],
      *   aFormulario: fn(fila) -> valores del formulario al editar
      * }
@@ -269,8 +271,9 @@ var App = (function () {
         var editandoId = null;
 
         var filtrosHtml = (config.filtros || []).map(function (f) {
-            return '<div class="campo"><label>' + f.etiqueta + '</label>' +
-                '<select data-filtro="' + f.nombre + '"></select></div>';
+            var idAttr = f.id ? ' id="' + f.id + '"' : '';
+            return '<div class="campo"><label' + (f.id ? ' for="' + f.id + '"' : '') + '>' + f.etiqueta + '</label>' +
+                '<select' + idAttr + ' data-filtro="' + f.nombre + '"></select></div>';
         }).join('');
 
         $c.html(
@@ -285,7 +288,7 @@ var App = (function () {
             '  </div>' +
             '  <div class="tabla-scroll"><table>' +
             '    <thead><tr>' + config.columnas.map(function (col) { return '<th>' + col.titulo + '</th>'; }).join('') +
-            (config.editable ? '<th></th>' : '') + '</tr></thead>' +
+            ((config.editable || config.accionesExtra) ? '<th></th>' : '') + '</tr></thead>' +
             '    <tbody></tbody>' +
             '  </table></div>' +
             '</div>'
@@ -331,7 +334,8 @@ var App = (function () {
 
         function pintar() {
             var $tb = $c.find('tbody').empty();
-            var columnas = config.columnas.length + (config.editable ? 1 : 0);
+            var tieneAcciones = config.editable || config.accionesExtra;
+            var columnas = config.columnas.length + (tieneAcciones ? 1 : 0);
 
             if (!filas.length) {
                 $tb.append('<tr><td colspan="' + columnas + '" class="vacio">No hay registros</td></tr>');
@@ -340,11 +344,12 @@ var App = (function () {
 
             filas.forEach(function (fila) {
                 var celdas = config.columnas.map(function (col) { return '<td>' + col.valor(fila) + '</td>'; }).join('');
+                var extra = config.accionesExtra ? config.accionesExtra(fila) : '';
                 var acciones = config.editable
-                    ? '<td class="acciones">' +
+                    ? '<td class="acciones">' + extra +
                     '<button type="button" class="btn-chico crud-editar" data-id="' + fila.id + '">Editar</button>' +
                     '<button type="button" class="btn-chico btn-rojo crud-eliminar" data-id="' + fila.id + '">Eliminar</button></td>'
-                    : '';
+                    : (extra ? '<td class="acciones">' + extra + '</td>' : '');
                 $tb.append('<tr data-id="' + fila.id + '">' + celdas + acciones + '</tr>');
             });
         }

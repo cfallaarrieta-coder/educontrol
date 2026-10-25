@@ -7,6 +7,7 @@ import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -61,6 +62,13 @@ public interface MatriculaRepository extends JpaRepository<Matricula, Integer> {
             order by m.fecha desc
             """)
     List<Matricula> filtrar(Integer anioId, Integer seccionId, EstadoMatricula estado, String texto);
+
+    /**
+     * Consulta por lote las matriculas de un conjunto de alumnos en un anio escolar
+     * para armar el estado academico sin problema N+1.
+     */
+    @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado"})
+    List<Matricula> findBySeccionAnioEscolarIdAndAlumnoIdIn(Integer anioId, Collection<Integer> alumnoIds);
 
     /** Nomina de una seccion en orden alfabetico (solo alumnos con matricula pagada). */
     @EntityGraph(attributePaths = {"alumno", "seccion", "seccion.grado", "seccion.anioEscolar", "reciboMatricula"})

@@ -35,6 +35,7 @@
                     <option value="MATRICULADA">Matriculados</option>
                     <option value="INSCRITA">Inscritos (Pendientes de pago)</option>
                     <option value="ANULADA">Anulados</option>
+                    <option value="SIN_MATRICULA">Sin inscripción / No matriculados</option>
                 </select>
             </div>
         </div>
@@ -55,6 +56,7 @@
 <script>
 
     var matriculas = [];
+    var alumnosSinMatricula = [];
     var secciones = [];
 
     function cargarSecciones() {
@@ -66,15 +68,59 @@
     }
 
     function cargar() {
-        var p = { anioId: $('#anio').val() };
+        var estado = $('#estado').val();
+        var anioId = $('#anio').val();
+        var q = $('#q').val().trim();
+
+        if (estado === 'SIN_MATRICULA') {
+            $('#seccion').prop('disabled', true);
+            var paramsAlumnos = { anioId: anioId, situacion: 'SIN_MATRICULA' };
+            if (q) paramsAlumnos.q = q;
+
+            App.api('GET', '/api/alumnos?' + $.param(paramsAlumnos)).done(function (lista) {
+                alumnosSinMatricula = lista;
+                pintarSinMatricula();
+            });
+            return;
+        }
+
+        $('#seccion').prop('disabled', false);
+        var p = { anioId: anioId };
         if ($('#seccion').val()) p.seccionId = $('#seccion').val();
-        if ($('#estado').val()) p.estado = $('#estado').val();
-        if ($('#q').val().trim()) p.q = $('#q').val().trim();
+        if (estado) p.estado = estado;
+        if (q) p.q = q;
 
         App.api('GET', '/api/matriculas?' + $.param(p)).done(function (lista) {
             matriculas = lista;
             pintar();
         });
+    }
+
+    function pintarSinMatricula() {
+        $('#total').text(alumnosSinMatricula.length + ' alumno(s) sin inscripción ni matrícula en este año');
+
+        if (!alumnosSinMatricula.length) {
+            $('#tabla').html('<tr><td colspan="7" class="vacio">No hay alumnos pendientes de inscribir con esos filtros</td></tr>');
+            return;
+        }
+
+        var anioId = $('#anio').val() || '';
+        $('#tabla').html(alumnosSinMatricula.map(function (a) {
+            var etiquetaEstado = a.tuvoAnulacionEnAnio
+                ? 'Sin inscripción · Tuvo anulación'
+                : 'Sin inscripción';
+            var hrefInscribir = 'matricula.html?alumnoId=' + a.id + (anioId ? '&anioId=' + anioId : '');
+
+            return '<tr>' +
+                '<td style="color:#888">—</td>' +
+                '<td><b>' + App.escapar(a.nombreCompleto) + '</b></td>' +
+                '<td>' + App.escapar(a.dni) + '</td>' +
+                '<td style="color:#888">— Sin asignar —</td>' +
+                '<td><span class="etiqueta et-gris">' + App.escapar(etiquetaEstado) + '</span></td>' +
+                '<td style="color:#888">—</td>' +
+                '<td class="acciones"><a href="' + hrefInscribir + '" class="btn btn-chico btn-verde" style="text-decoration:none">+ Inscribir</a></td>' +
+                '</tr>';
+        }).join(''));
     }
 
     function pintar() {

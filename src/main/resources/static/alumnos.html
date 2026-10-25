@@ -17,7 +17,7 @@
     <div class="cabecera">
         <div>
             <h1>Alumnos</h1>
-            <p>Registro de alumnos y datos de su apoderado.</p>
+            <p>Registro de alumnos, datos de su apoderado y situación académica por año escolar.</p>
         </div>
     </div>
     <div id="crud"></div>
@@ -30,13 +30,55 @@
             nombre: 'alumno',
             editable: true,
             busqueda: 'q',
+            filtros: [
+                {
+                    nombre: 'anioId',
+                    id: 'anio',
+                    etiqueta: 'Año escolar',
+                    opciones: App.opciones.anios
+                },
+                {
+                    nombre: 'situacion',
+                    id: 'situacion',
+                    etiqueta: 'Situación en el año',
+                    todos: 'Todas',
+                    opciones: function () {
+                        return $.Deferred().resolve([
+                            { valor: 'SIN_MATRICULA', texto: 'Sin inscripción ni matrícula' },
+                            { valor: 'INSCRITA', texto: 'Inscritos (Pendientes de pago)' },
+                            { valor: 'MATRICULADA', texto: 'Matriculados' }
+                        ]).promise();
+                    }
+                }
+            ],
             columnas: [
                 { titulo: 'DNI', valor: function (a) { return App.escapar(a.dni); } },
-                { titulo: 'Apellidos y nombres', valor: function (a) { return App.escapar(a.nombreCompleto); } },
+                { titulo: 'Apellidos y nombres', valor: function (a) { return '<b>' + App.escapar(a.nombreCompleto) + '</b>'; } },
                 { titulo: 'Nacimiento', valor: function (a) { return App.fecha(a.fechaNacimiento); } },
                 { titulo: 'Apoderado', valor: function (a) { return App.escapar(a.apoderado); } },
-                { titulo: 'Teléfono', valor: function (a) { return App.escapar(a.telefonoApoderado); } }
+                { titulo: 'Teléfono', valor: function (a) { return App.escapar(a.telefonoApoderado); } },
+                {
+                    titulo: 'Situación (Año)',
+                    valor: function (a) {
+                        if (a.situacion === 'MATRICULADA') {
+                            return '<span class="etiqueta et-verde">Matriculado · ' + App.escapar(a.seccionActual) + '</span>';
+                        }
+                        if (a.situacion === 'INSCRITA') {
+                            return '<span class="etiqueta et-amarillo">Inscrito · ' + App.escapar(a.seccionActual) + '</span>';
+                        }
+                        var texto = 'Sin inscripción' + (a.tuvoAnulacionEnAnio ? ' (Anulada previa)' : '');
+                        return '<span class="etiqueta et-gris">' + App.escapar(texto) + '</span>';
+                    }
+                }
             ],
+            accionesExtra: function (a) {
+                if (a.situacion === 'SIN_MATRICULA') {
+                    var anioId = $('#anio').val() || '';
+                    return '<a href="matricula.html?alumnoId=' + a.id + (anioId ? '&anioId=' + anioId : '') +
+                        '" class="btn btn-chico btn-verde" style="text-decoration:none;margin-right:4px">+ Inscribir</a>';
+                }
+                return '';
+            },
             campos: [
                 { nombre: 'dni', etiqueta: 'DNI', requerido: true, max: 8, patron: '\\d{8}', placeholder: '8 dígitos' },
                 { nombre: 'fechaNacimiento', etiqueta: 'Fecha de nacimiento', tipo: 'date', requerido: true },
