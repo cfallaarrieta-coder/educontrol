@@ -2,6 +2,7 @@ package com.example.demo.config;
 
 import com.example.demo.entity.*;
 import com.example.demo.repository.*;
+import com.example.demo.service.*;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,10 +27,16 @@ public class DataSeeder implements CommandLineRunner {
     private final AlumnoRepository alumnoRepository;
     private final MatriculaRepository matriculaRepository;
     private final ReciboRepository reciboRepository;
-    private final com.example.demo.service.PagoService pagoService;
+    private final PagoService pagoService;
     private final PasswordEncoder passwordEncoder;
-    private final com.example.demo.repository.TarifaRepository tarifaRepository;
+    private final TarifaRepository tarifaRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final DashboardService dashboardService;
+    private final GradoService gradoService;
+    private final AnioEscolarService anioEscolarService;
+    private final TarifaService tarifaService;
+    private final SeccionService seccionService;
+    private final RedisService redisService;
 
     public DataSeeder(UsuarioRepository usuarioRepository,
                       AnioEscolarRepository anioRepository,
@@ -39,10 +46,16 @@ public class DataSeeder implements CommandLineRunner {
                       AlumnoRepository alumnoRepository,
                       MatriculaRepository matriculaRepository,
                       ReciboRepository reciboRepository,
-                      com.example.demo.service.PagoService pagoService,
+                      PagoService pagoService,
                       PasswordEncoder passwordEncoder,
-                      com.example.demo.repository.TarifaRepository tarifaRepository,
-                      JdbcTemplate jdbcTemplate) {
+                      TarifaRepository tarifaRepository,
+                      JdbcTemplate jdbcTemplate,
+                      DashboardService dashboardService,
+                      GradoService gradoService,
+                      AnioEscolarService anioEscolarService,
+                      TarifaService tarifaService,
+                      SeccionService seccionService,
+                      RedisService redisService) {
         this.usuarioRepository = usuarioRepository;
         this.anioRepository = anioRepository;
         this.gradoRepository = gradoRepository;
@@ -55,6 +68,12 @@ public class DataSeeder implements CommandLineRunner {
         this.passwordEncoder = passwordEncoder;
         this.tarifaRepository = tarifaRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.dashboardService = dashboardService;
+        this.gradoService = gradoService;
+        this.anioEscolarService = anioEscolarService;
+        this.tarifaService = tarifaService;
+        this.seccionService = seccionService;
+        this.redisService = redisService;
     }
 
     /** Se ejecuta una sola vez, justo despues de arrancar la aplicacion. */
@@ -72,6 +91,25 @@ public class DataSeeder implements CommandLineRunner {
         migrarMatriculasAntiguas();
         migrarRecibosAntiguos();
         inscripcionesYPagos(anio);
+        precargarCacheRedis(anio);
+    }
+
+    /**
+     * Precarga en Redis las cifras del Dashboard, Catálogos (Grados, Tarifas, Años) y Secciones
+     * al arrancar para que la primera visita sea instantánea y las llaves sean visibles en Railway.
+     */
+    private void precargarCacheRedis(AnioEscolar anio) {
+        try {
+            redisService.invalidarSeccionesYDashboard();
+            dashboardService.resumen();
+            gradoService.listar();
+            anioEscolarService.listar();
+            if (anio != null) {
+                tarifaService.listar(anio.getId());
+                seccionService.listar(anio.getId(), null);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     /**

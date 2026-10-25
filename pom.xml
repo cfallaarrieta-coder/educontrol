@@ -60,6 +60,12 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
+        <!-- Redis: cache en RAM, sesiones distribuidas, pub/sub en tiempo real y candados -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Driver de mysql -->
         <dependency>
             <groupId>com.mysql</groupId>

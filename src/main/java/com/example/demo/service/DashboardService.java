@@ -21,21 +21,31 @@ public class DashboardService {
     private final AlumnoRepository alumnoRepository;
     private final SeccionRepository seccionRepository;
     private final MatriculaRepository matriculaRepository;
+    private final RedisService redisService;
 
     public DashboardService(AnioEscolarRepository anioRepository,
                             AlumnoRepository alumnoRepository,
                             SeccionRepository seccionRepository,
-                            MatriculaRepository matriculaRepository) {
+                            MatriculaRepository matriculaRepository,
+                            RedisService redisService) {
         this.anioRepository = anioRepository;
         this.alumnoRepository = alumnoRepository;
         this.seccionRepository = seccionRepository;
         this.matriculaRepository = matriculaRepository;
+        this.redisService = redisService;
     }
 
-    /** Cifras del anio escolar abierto mas reciente. */
+    /**
+     * Cifras del anio escolar abierto mas reciente.
+     * Punto 3 de REDIS_SPEC.md: se guarda copia en Redis por 10 minutos
+     * y se invalida/actualiza al instante cuando ocurre una matricula, anulacion, traslado o pago.
+     */
     @Transactional(readOnly = true)
     public DashboardResponse resumen() {
+        return redisService.obtenerOCalcularDashboard(this::calcularResumenDesdeMySQL);
+    }
 
+    private DashboardResponse calcularResumenDesdeMySQL() {
         long alumnos = alumnoRepository.count();
 
         AnioEscolar anio = anioRepository.findFirstByEstadoOrderByAnioDesc(EstadoAnio.ABIERTO)

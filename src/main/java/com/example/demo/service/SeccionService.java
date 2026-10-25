@@ -28,6 +28,7 @@ public class SeccionService {
     private final CuotaRepository cuotaRepository;
     private final ReciboRepository reciboRepository;
     private final ApplicationEventPublisher eventos;
+    private final RedisService redisService;
 
     public SeccionService(SeccionRepository seccionRepository,
                           AnioEscolarRepository anioRepository,
@@ -36,7 +37,8 @@ public class SeccionService {
                           MatriculaRepository matriculaRepository,
                           CuotaRepository cuotaRepository,
                           ReciboRepository reciboRepository,
-                          ApplicationEventPublisher eventos) {
+                          ApplicationEventPublisher eventos,
+                          RedisService redisService) {
         this.seccionRepository = seccionRepository;
         this.anioRepository = anioRepository;
         this.gradoRepository = gradoRepository;
@@ -45,20 +47,28 @@ public class SeccionService {
         this.cuotaRepository = cuotaRepository;
         this.reciboRepository = reciboRepository;
         this.eventos = eventos;
+        this.redisService = redisService;
     }
 
+    /**
+     * Punto 3 y Sección 5 de REDIS_SPEC.md: Vacantes por sección en Redis (TTL: 30 minutos).
+     */
     @Transactional(readOnly = true)
     public List<SeccionResponse> listar(Integer anioId, Integer gradoId) {
-        return seccionRepository.filtrar(anioId, gradoId)
-                .stream()
-                .map(SeccionResponse::desde)
-                .toList();
+        return redisService.obtenerOCalcularSecciones(anioId, gradoId, () ->
+                seccionRepository.filtrar(anioId, gradoId)
+                        .stream()
+                        .map(SeccionResponse::desde)
+                        .toList()
+        );
     }
 
     @Transactional(readOnly = true)
     public SeccionResponse obtenerPorId(Integer id) {
-        return SeccionResponse.desde(seccionRepository.findById(id)
-                .orElseThrow(() -> new NegocioException("No existe la seccion " + id)));
+        return redisService.obtenerOCalcularSeccionPorId(id, () ->
+                SeccionResponse.desde(seccionRepository.findById(id)
+                        .orElseThrow(() -> new NegocioException("No existe la seccion " + id)))
+        );
     }
 
     @Transactional
@@ -81,7 +91,12 @@ public class SeccionService {
                 request.vacantesMaximas()
         );
 
-        return SeccionResponse.desde(seccionRepository.save(seccion));
+        Seccion guardada = seccionRepository.save(seccion);
+        SeccionResponse creada = SeccionResponse.desde(guardada);
+        redisService.invalidarSeccionesYDashboard();
+        eventos.publishEvent(new VacantesCambiadasEvent(
+                List.of(VacanteMensaje.desde(guardada)), null));
+        return creada;
     }
 
     /**
@@ -118,6 +133,7 @@ public class SeccionService {
         seccion.setTutor(buscarTutor(request.tutorId()));
         seccion.cambiarVacantesMaximas(request.vacantesMaximas());
 
+        redisService.invalidarSeccionesYDashboard();
         eventos.publishEvent(new VacantesCambiadasEvent(
                 List.of(VacanteMensaje.desde(seccion)), null));
 
@@ -140,6 +156,9 @@ public class SeccionService {
         cuotaRepository.eliminarPorSeccion(id);
         matriculaRepository.eliminarPorSeccion(id);
         seccionRepository.deleteById(id);
+
+        redisService.invalidarSeccionesYDashboard();
+        eventos.publishEvent(new VacantesCambiadasEvent(List.of(), null));
     }
 
     private AnioEscolar buscarAnio(Integer id) {

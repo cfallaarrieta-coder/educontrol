@@ -27,6 +27,7 @@ public class PagoService {
     private final CuotaRepository cuotaRepository;
     private final TarifaRepository tarifaRepository;
     private final ApplicationEventPublisher eventos;
+    private final RedisService redisService;
 
     private static final String[] MESES = {
             "Marzo", "Abril", "Mayo", "Junio", "Julio",
@@ -38,13 +39,15 @@ public class PagoService {
                        ReciboRepository reciboRepository,
                        CuotaRepository cuotaRepository,
                        TarifaRepository tarifaRepository,
-                       ApplicationEventPublisher eventos) {
+                       ApplicationEventPublisher eventos,
+                       RedisService redisService) {
         this.matriculaRepository = matriculaRepository;
         this.seccionRepository = seccionRepository;
         this.reciboRepository = reciboRepository;
         this.cuotaRepository = cuotaRepository;
         this.tarifaRepository = tarifaRepository;
         this.eventos = eventos;
+        this.redisService = redisService;
     }
 
     /**
@@ -139,11 +142,21 @@ public class PagoService {
 
     /**
      * RF-02: Cobro de Derecho de Matricula.
+     * Punto 5 de REDIS_SPEC.md: Candado rápido de 10s en Redis para evitar doble-clic.
      * Cambia el estado de INSCRITA a MATRICULADA, ocupa la vacante (con bloqueo pesimista),
      * emite el recibo correlativo y genera las 10 cuotas mensuales (Marzo a Diciembre).
      */
     @Transactional
     public ReciboResponse pagarMatricula(Integer matriculaId, PagoRequest request, String cajero) {
+        String recursoCandado = "pago:matricula:" + matriculaId;
+        return redisService.ejecutarConCandado(
+                recursoCandado,
+                "Ya se esta procesando el pago de matricula de este alumno. Espera unos segundos.",
+                () -> ejecutarPagoMatricula(matriculaId, request, cajero)
+        );
+    }
+
+    private ReciboResponse ejecutarPagoMatricula(Integer matriculaId, PagoRequest request, String cajero) {
 
         Matricula matricula = matriculaRepository.findByIdParaActualizar(matriculaId)
                 .orElseThrow(() -> new NegocioException("No existe el registro de matricula " + matriculaId));
@@ -193,6 +206,7 @@ public class PagoService {
         }
         cuotaRepository.saveAll(cuotas);
 
+        redisService.invalidarSeccionesYDashboard();
         avisar(List.of(seccion), cajero + " cobro la matricula de "
                 + matricula.getAlumno().getNombreCompleto() + " (" + seccion.getDescripcion() + ") - Recibo " + recibo.getNumero());
 
@@ -201,9 +215,19 @@ public class PagoService {
 
     /**
      * RF-03 y RF-04: Cobro de cuota mensual respetando el orden prelatorio (secuencial).
+     * Punto 5 de REDIS_SPEC.md: Candado rápido de 10s en Redis para evitar doble-clic.
      */
     @Transactional
     public ReciboResponse pagarCuota(Integer cuotaId, PagoRequest request, String cajero) {
+        String recursoCandado = "pago:cuota:" + cuotaId;
+        return redisService.ejecutarConCandado(
+                recursoCandado,
+                "Ya se esta procesando el pago de esta cuota. Espera unos segundos.",
+                () -> ejecutarPagoCuota(cuotaId, request, cajero)
+        );
+    }
+
+    private ReciboResponse ejecutarPagoCuota(Integer cuotaId, PagoRequest request, String cajero) {
 
         Cuota cuota = cuotaRepository.findById(cuotaId)
                 .orElseThrow(() -> new NegocioException("No existe la cuota mensual " + cuotaId));
@@ -246,6 +270,7 @@ public class PagoService {
         cuota.setRecibo(recibo);
         cuotaRepository.save(cuota);
 
+        redisService.invalidarSeccionesYDashboard();
         avisar(List.of(matricula.getSeccion()), cajero + " cobro la mensualidad de "
                 + cuota.getMes() + " de " + matricula.getAlumno().getNombreCompleto() + " - Recibo " + recibo.getNumero());
 

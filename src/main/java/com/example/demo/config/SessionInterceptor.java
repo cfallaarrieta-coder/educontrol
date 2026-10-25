@@ -1,9 +1,9 @@
 package com.example.demo.config;
 
-
 import com.example.demo.controller.AuthController;
 import com.example.demo.entity.Usuario;
 import com.example.demo.repository.UsuarioRepository;
+import com.example.demo.service.RedisService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -13,8 +13,13 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
  * Se ejecuta ANTES de cada peticion protegida.
- * Si no hay sesion (o la cuenta fue desactivada), corta la peticion y responde 401 en JSON.
- * Si todo va bien, deja el Usuario en el request para los controllers y el AdminInterceptor.
+ *
+ * Punto 1 y Punto 2 de REDIS_SPEC.md:
+ *  - Primero verifica la sesion y el estado del usuario en la "pizarra" de Redis (menos de 1ms)
+ *    sin ir a MySQL en cada clic.
+ *  - Si no está en Redis (o vencieron sus 15 min de TTL), consulta MySQL y lo anota en Redis.
+ *  - Si el administrador desactiva al usuario en UsuarioService, su clave se borra de Redis
+ *    al instante y su acceso se corta de inmediato con 401.
  */
 @Component
 public class SessionInterceptor implements HandlerInterceptor {
@@ -23,9 +28,11 @@ public class SessionInterceptor implements HandlerInterceptor {
     public static final String USUARIO_ACTUAL = "usuarioActual";
 
     private final UsuarioRepository usuarioRepository;
+    private final RedisService redisService;
 
-    public SessionInterceptor(UsuarioRepository usuarioRepository) {
+    public SessionInterceptor(UsuarioRepository usuarioRepository, RedisService redisService) {
         this.usuarioRepository = usuarioRepository;
+        this.redisService = redisService;
     }
 
     @Override
@@ -33,25 +40,27 @@ public class SessionInterceptor implements HandlerInterceptor {
                              HttpServletResponse response,
                              Object handler) throws Exception {
 
-        // false = no crear una sesion nueva si no existe
-        HttpSession sesion = request.getSession(false);
+        Integer usuarioId = AuthController.resolverUsuarioId(request, redisService);
 
-        Integer usuarioId = sesion == null
-                ? null
-                : (Integer) sesion.getAttribute(AuthController.SESION_USUARIO_ID);
-
-        // Se relee de la BD: si el admin desactiva la cuenta, el acceso se corta al instante.
+        // Consulta primero en Redis (TTL 15 min); solo va a MySQL si no está en la pizarra.
         Usuario usuario = usuarioId == null
                 ? null
-                : usuarioRepository.findById(usuarioId).filter(Usuario::estaActivo).orElse(null);
+                : redisService.obtenerUsuarioActivo(usuarioId, () -> usuarioRepository.findById(usuarioId));
 
         if (usuario != null) {
             request.setAttribute(USUARIO_ACTUAL, usuario);
             return true;   // deja pasar al controller
         }
 
+        HttpSession sesion = request.getSession(false);
         if (sesion != null) {
+            redisService.eliminarSesion(sesion.getId());
             sesion.invalidate();
+        }
+        String tokenCookie = AuthController.extraerCookieSesion(request);
+        if (tokenCookie != null) {
+            redisService.eliminarSesion(tokenCookie);
+            AuthController.escribirCookieSesion(response, "", 0);
         }
 
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
@@ -62,4 +71,3 @@ public class SessionInterceptor implements HandlerInterceptor {
         return false;      // corta aqui: el controller no se ejecuta
     }
 }
-

@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Matricula, anulacion y traslado con BLOQUEO PESIMISTA.
+ * Matricula, anulacion y traslado con BLOQUEO PESIMISTA + Candado Redis anti doble-clic (Punto 5).
  *
  * Orden fijo de bloqueo en TODAS las operaciones (evita deadlocks):
  *     1) matricula   2) alumno   3) secciones (de menor a mayor id)
@@ -42,6 +42,7 @@ public class MatriculaService {
     private final ReciboRepository reciboRepository;
     private final PagoService pagoService;
     private final ApplicationEventPublisher eventos;
+    private final RedisService redisService;
 
     /**
      * Pausa artificial MIENTRAS se tiene el bloqueo. Solo para la exposicion:
@@ -57,6 +58,7 @@ public class MatriculaService {
                             ReciboRepository reciboRepository,
                             PagoService pagoService,
                             ApplicationEventPublisher eventos,
+                            RedisService redisService,
                             @Value("${app.demo.retardo-matricula-ms:0}") long retardoDemoMs) {
         this.matriculaRepository = matriculaRepository;
         this.alumnoRepository = alumnoRepository;
@@ -65,6 +67,7 @@ public class MatriculaService {
         this.reciboRepository = reciboRepository;
         this.pagoService = pagoService;
         this.eventos = eventos;
+        this.redisService = redisService;
         this.retardoDemoMs = retardoDemoMs;
     }
 
@@ -99,6 +102,15 @@ public class MatriculaService {
 
     @Transactional
     public MatriculaResponse inscribir(MatriculaRequest request, String usuario) {
+        String recursoCandado = "matricula:alumno:" + request.alumnoId();
+        return redisService.ejecutarConCandado(
+                recursoCandado,
+                "Ya se esta procesando la matricula de este alumno. Espera unos segundos.",
+                () -> ejecutarInscripcion(request, usuario)
+        );
+    }
+
+    private MatriculaResponse ejecutarInscripcion(MatriculaRequest request, String usuario) {
 
         // 1) Bloquea al alumno: nadie mas puede inscribirlo en paralelo.
         Alumno alumno = alumnoRepository.findByIdParaMatricula(request.alumnoId())
@@ -128,6 +140,7 @@ public class MatriculaService {
         // La vacante se ocupara con bloqueo pesimista al confirmar el pago del Derecho de Matricula.
         Matricula matricula = matriculaRepository.save(new Matricula(alumno, seccion, usuario, EstadoMatricula.INSCRITA));
 
+        redisService.invalidarSeccionesYDashboard();
         avisar(List.of(seccion), usuario + " inscribio a " + alumno.getNombreCompleto()
                 + " en " + seccion.getDescripcion() + " (pendiente de pago de matricula)");
 
@@ -151,6 +164,15 @@ public class MatriculaService {
 
     @Transactional
     public MatriculaResponse anular(Integer matriculaId, AnularMatriculaRequest request, String usuario, boolean esAdmin) {
+        String recursoCandado = "matricula:op:" + matriculaId;
+        return redisService.ejecutarConCandado(
+                recursoCandado,
+                "Ya se esta procesando una operacion para esta matricula.",
+                () -> ejecutarAnulacion(matriculaId, request, usuario, esAdmin)
+        );
+    }
+
+    private MatriculaResponse ejecutarAnulacion(Integer matriculaId, AnularMatriculaRequest request, String usuario, boolean esAdmin) {
 
         // 1) Bloquea la matricula
         Matricula matricula = bloquearMatricula(matriculaId);
@@ -255,6 +277,7 @@ public class MatriculaService {
                 ? ""
                 : " · " + boletasDevolucion.size() + " boleta(s) de devolucion emitida(s)";
 
+        redisService.invalidarSeccionesYDashboard();
         avisar(List.of(seccion), usuario + " anulo el registro de "
                 + matricula.getAlumno().getNombreCompleto() + " (" + seccion.getDescripcion() + ")" + detalleDev);
 
@@ -266,6 +289,15 @@ public class MatriculaService {
     // =========================================================
     @Transactional
     public MatriculaResponse trasladar(Integer matriculaId, Integer destinoId, String usuario) {
+        String recursoCandado = "matricula:op:" + matriculaId;
+        return redisService.ejecutarConCandado(
+                recursoCandado,
+                "Ya se esta procesando un traslado para esta matricula.",
+                () -> ejecutarTraslado(matriculaId, destinoId, usuario)
+        );
+    }
+
+    private MatriculaResponse ejecutarTraslado(Integer matriculaId, Integer destinoId, String usuario) {
 
         Matricula matricula = bloquearMatricula(matriculaId);
 
@@ -305,6 +337,7 @@ public class MatriculaService {
         }
         matricula.setSeccion(destino);
 
+        redisService.invalidarSeccionesYDashboard();
         avisar(List.of(origen, destino), usuario + " traslado a "
                 + matricula.getAlumno().getNombreCompleto() + " de "
                 + origen.getDescripcion() + " a " + destino.getDescripcion());

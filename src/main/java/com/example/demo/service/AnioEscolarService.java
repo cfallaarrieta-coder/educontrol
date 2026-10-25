@@ -25,27 +25,35 @@ public class AnioEscolarService {
     private final CuotaRepository cuotaRepository;
     private final ReciboRepository reciboRepository;
     private final TarifaRepository tarifaRepository;
+    private final RedisService redisService;
 
     public AnioEscolarService(AnioEscolarRepository anioRepository,
                               SeccionRepository seccionRepository,
                               MatriculaRepository matriculaRepository,
                               CuotaRepository cuotaRepository,
                               ReciboRepository reciboRepository,
-                              TarifaRepository tarifaRepository) {
+                              TarifaRepository tarifaRepository,
+                              RedisService redisService) {
         this.anioRepository = anioRepository;
         this.seccionRepository = seccionRepository;
         this.matriculaRepository = matriculaRepository;
         this.cuotaRepository = cuotaRepository;
         this.reciboRepository = reciboRepository;
         this.tarifaRepository = tarifaRepository;
+        this.redisService = redisService;
     }
 
+    /**
+     * Punto 3 y Sección 5 de REDIS_SPEC.md: Catálogo de años escolares en Redis (TTL: 12 horas).
+     */
     @Transactional(readOnly = true)
     public List<AnioEscolarResponse> listar() {
-        return anioRepository.findAllByOrderByAnioDesc()
-                .stream()
-                .map(AnioEscolarResponse::desde)
-                .toList();
+        return redisService.obtenerOCalcularAnios(() ->
+                anioRepository.findAllByOrderByAnioDesc()
+                        .stream()
+                        .map(AnioEscolarResponse::desde)
+                        .toList()
+        );
     }
 
     @Transactional
@@ -53,7 +61,10 @@ public class AnioEscolarService {
         if (anioRepository.existsByAnio(request.anio())) {
             throw new NegocioException("El anio escolar " + request.anio() + " ya existe");
         }
-        return AnioEscolarResponse.desde(anioRepository.save(new AnioEscolar(request.anio(), request.estado())));
+        AnioEscolarResponse creado = AnioEscolarResponse.desde(
+                anioRepository.save(new AnioEscolar(request.anio(), request.estado())));
+        redisService.invalidarAnios();
+        return creado;
     }
 
     @Transactional
@@ -64,6 +75,7 @@ public class AnioEscolarService {
         AnioEscolar anio = buscarEntidad(id);
         anio.setAnio(request.anio());
         anio.setEstado(request.estado());
+        redisService.invalidarAnios();
         return AnioEscolarResponse.desde(anio);
     }
 
@@ -91,6 +103,8 @@ public class AnioEscolarService {
         seccionRepository.eliminarPorAnio(id);
         tarifaRepository.deleteByAnioEscolarId(id);
         anioRepository.deleteById(id);
+
+        redisService.invalidarAnios();
     }
 
     private AnioEscolar buscarEntidad(Integer id) {

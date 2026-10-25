@@ -1,0 +1,95 @@
+# =====================================================================
+# Arquitectura Redis para EduControl (Secciones 3 y 4 de REDIS_SPEC.md)
+# - Persistencia Híbrida: RDB + AOF (aof-use-rdb-preamble yes)
+# - Alta Disponibilidad: 1 Maestro + 2 Réplicas + 3 Sentinels
+# =====================================================================
+
+services:
+  redis-master:
+    image: redis:7.2-alpine
+    container_name: educontrol-redis-master
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --aof-use-rdb-preamble yes
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+
+  redis-replica-1:
+    image: redis:7.2-alpine
+    container_name: educontrol-redis-replica-1
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --appendonly yes
+      --appendfsync everysec
+      --aof-use-rdb-preamble yes
+    ports:
+      - "6380:6379"
+    depends_on:
+      - redis-master
+    volumes:
+      - redis-replica1-data:/data
+
+  redis-replica-2:
+    image: redis:7.2-alpine
+    container_name: educontrol-redis-replica-2
+    command: >
+      redis-server
+      --replicaof redis-master 6379
+      --appendonly yes
+      --appendfsync everysec
+      --aof-use-rdb-preamble yes
+    ports:
+      - "6381:6379"
+    depends_on:
+      - redis-master
+    volumes:
+      - redis-replica2-data:/data
+
+  redis-sentinel-1:
+    image: redis:7.2-alpine
+    container_name: educontrol-sentinel-1
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    ports:
+      - "26379:26379"
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  redis-sentinel-2:
+    image: redis:7.2-alpine
+    container_name: educontrol-sentinel-2
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    ports:
+      - "26380:26379"
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  redis-sentinel-3:
+    image: redis:7.2-alpine
+    container_name: educontrol-sentinel-3
+    command: >
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    ports:
+      - "26381:26379"
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+volumes:
+  redis-master-data:
+  redis-replica1-data:
+  redis-replica2-data:

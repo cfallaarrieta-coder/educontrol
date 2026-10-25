@@ -18,11 +18,14 @@ public class DocenteService {
 
     private final DocenteRepository docenteRepository;
     private final SeccionRepository seccionRepository;
+    private final RedisService redisService;
 
     public DocenteService(DocenteRepository docenteRepository,
-                          SeccionRepository seccionRepository) {
+                          SeccionRepository seccionRepository,
+                          RedisService redisService) {
         this.docenteRepository = docenteRepository;
         this.seccionRepository = seccionRepository;
+        this.redisService = redisService;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +57,7 @@ public class DocenteService {
         docente.setApellidos(request.apellidos().trim());
         docente.setEspecialidad(vacioANull(request.especialidad()));
         docente.setTelefono(vacioANull(request.telefono()));
+        redisService.invalidarSecciones();
         return DocenteResponse.desde(docente);
     }
 
@@ -63,6 +67,7 @@ public class DocenteService {
             throw new NegocioException("No se puede eliminar: el docente es tutor de una seccion");
         }
         docenteRepository.delete(buscarEntidad(id));
+        redisService.invalidarSecciones();
     }
 
     private Docente buscarEntidad(Integer id) {

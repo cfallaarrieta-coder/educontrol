@@ -17,10 +17,14 @@ public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RedisService redisService;
 
-    public UsuarioService(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
+    public UsuarioService(UsuarioRepository usuarioRepository,
+                          PasswordEncoder passwordEncoder,
+                          RedisService redisService) {
         this.usuarioRepository = usuarioRepository;
         this.passwordEncoder = passwordEncoder;
+        this.redisService = redisService;
     }
 
     @Transactional(readOnly = true)
@@ -43,7 +47,9 @@ public class UsuarioService {
                 request.nombreCompleto().trim(), request.rol());
         usuario.setActivo(request.activo());
 
-        return UsuarioResponse.desde(usuarioRepository.save(usuario));
+        Usuario guardado = usuarioRepository.save(usuario);
+        redisService.guardarEstadoUsuario(guardado);
+        return UsuarioResponse.desde(guardado);
     }
 
     /**
@@ -68,10 +74,21 @@ public class UsuarioService {
         usuario.setRol(request.rol());
         usuario.setActivo(request.activo());
 
+        boolean cambioPassword = false;
         // Contrasena vacia al editar = se mantiene la actual.
         if (request.password() != null && !request.password().isBlank()) {
             validarPassword(request.password());
             usuario.setPassword(passwordEncoder.encode(request.password()));
+            cambioPassword = true;
+        }
+
+        // Punto 1 de REDIS_SPEC.md:
+        // Si el administrador desactiva al usuario o cambia su clave, se borra de la pizarra de Redis
+        // y sus sesiones activas se cortan al instante. Si solo lo editó y sigue activo, actualiza la pizarra.
+        if (!usuario.estaActivo() || cambioPassword) {
+            redisService.invalidarUsuario(id);
+        } else {
+            redisService.guardarEstadoUsuario(usuario);
         }
 
         return UsuarioResponse.desde(usuario);
@@ -83,6 +100,7 @@ public class UsuarioService {
             throw new NegocioException("No puedes eliminar tu propia cuenta");
         }
         usuarioRepository.delete(buscarEntidad(id));
+        redisService.invalidarUsuario(id);
     }
 
     private void validarPassword(String password) {

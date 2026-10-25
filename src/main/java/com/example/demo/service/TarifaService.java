@@ -21,19 +21,27 @@ public class TarifaService {
     private final TarifaRepository tarifaRepository;
     private final AnioEscolarRepository anioRepository;
     private final CuotaRepository cuotaRepository;
+    private final RedisService redisService;
 
     public TarifaService(TarifaRepository tarifaRepository,
                          AnioEscolarRepository anioRepository,
-                         CuotaRepository cuotaRepository) {
+                         CuotaRepository cuotaRepository,
+                         RedisService redisService) {
         this.tarifaRepository = tarifaRepository;
         this.anioRepository = anioRepository;
         this.cuotaRepository = cuotaRepository;
+        this.redisService = redisService;
     }
 
+    /**
+     * Punto 3 de REDIS_SPEC.md: Catálogo de tarifas en Redis con TTL de 12 horas.
+     */
     @Transactional(readOnly = true)
     public List<TarifaResponse> listar(Integer anioId) {
-        return tarifaRepository.findByAnioEscolarIdOrderByNivelAsc(anioId)
-                .stream().map(TarifaResponse::desde).toList();
+        return redisService.obtenerOCalcularTarifas(anioId, () ->
+                tarifaRepository.findByAnioEscolarIdOrderByNivelAsc(anioId)
+                        .stream().map(TarifaResponse::desde).toList()
+        );
     }
 
     @Transactional
@@ -51,7 +59,9 @@ public class TarifaService {
         tarifa.setMontoMatricula(request.montoMatricula());
         tarifa.setMontoMensualidad(request.montoMensualidad());
 
-        return TarifaResponse.desde(tarifaRepository.save(tarifa));
+        TarifaResponse guardada = TarifaResponse.desde(tarifaRepository.save(tarifa));
+        redisService.invalidarTarifas(anioId);
+        return guardada;
     }
 
     @Transactional
@@ -91,5 +101,7 @@ public class TarifaService {
             tarifa.setMontoMensualidad(origen.getMontoMensualidad());
             tarifaRepository.save(tarifa);
         }
+
+        redisService.invalidarTarifas(destinoId);
     }
 }

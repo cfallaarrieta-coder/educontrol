@@ -16,18 +16,27 @@ public class GradoService {
 
     private final GradoRepository gradoRepository;
     private final SeccionRepository seccionRepository;
+    private final RedisService redisService;
 
-    public GradoService(GradoRepository gradoRepository, SeccionRepository seccionRepository) {
+    public GradoService(GradoRepository gradoRepository,
+                        SeccionRepository seccionRepository,
+                        RedisService redisService) {
         this.gradoRepository = gradoRepository;
         this.seccionRepository = seccionRepository;
+        this.redisService = redisService;
     }
 
+    /**
+     * Punto 3 de REDIS_SPEC.md: Catálogo de grados en Redis con TTL de 12 horas.
+     */
     @Transactional(readOnly = true)
     public List<GradoResponse> listar() {
-        return gradoRepository.findAllByOrderByOrdenAsc()
-                .stream()
-                .map(GradoResponse::desde)
-                .toList();
+        return redisService.obtenerOCalcularGrados(() ->
+                gradoRepository.findAllByOrderByOrdenAsc()
+                        .stream()
+                        .map(GradoResponse::desde)
+                        .toList()
+        );
     }
 
     @Transactional
@@ -36,7 +45,10 @@ public class GradoService {
         if (gradoRepository.existsByNivelAndNombre(request.nivel(), nombre)) {
             throw new NegocioException("Ese grado ya existe en el nivel " + request.nivel());
         }
-        return GradoResponse.desde(gradoRepository.save(new Grado(request.nivel(), nombre, request.orden())));
+        GradoResponse creado = GradoResponse.desde(
+                gradoRepository.save(new Grado(request.nivel(), nombre, request.orden())));
+        redisService.invalidarGrados();
+        return creado;
     }
 
     @Transactional
@@ -49,6 +61,7 @@ public class GradoService {
         grado.setNivel(request.nivel());
         grado.setNombre(nombre);
         grado.setOrden(request.orden());
+        redisService.invalidarGrados();
         return GradoResponse.desde(grado);
     }
 
@@ -58,6 +71,7 @@ public class GradoService {
             throw new NegocioException("No se puede eliminar: el grado tiene secciones");
         }
         gradoRepository.delete(buscarEntidad(id));
+        redisService.invalidarGrados();
     }
 
     private Grado buscarEntidad(Integer id) {

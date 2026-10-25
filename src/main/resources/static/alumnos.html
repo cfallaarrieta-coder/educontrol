@@ -25,7 +25,7 @@
 
 <script>
     App.iniciar().then(function () {
-        App.crud({
+        var pantalla = App.crud({
             url: '/api/alumnos',
             nombre: 'alumno',
             editable: true,
@@ -87,6 +87,13 @@
                 { nombre: 'apoderado', etiqueta: 'Apoderado (nombre completo)', requerido: true, max: 120 },
                 { nombre: 'telefonoApoderado', etiqueta: 'Teléfono del apoderado', max: 15, patron: '\\d{6,15}' }
             ]
+        });
+
+        // WebSocket: si otra persona registra/edita/elimina un alumno o cambia su matrícula, se refresca solo
+        var espera;
+        App.escuchar('/topic/dashboard', function () {
+            clearTimeout(espera);
+            espera = setTimeout(function () { pantalla.recargar(); }, 300);
         });
     });
 </script>

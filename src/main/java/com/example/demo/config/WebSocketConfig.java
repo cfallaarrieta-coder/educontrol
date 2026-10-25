@@ -1,7 +1,7 @@
 package com.example.demo.config;
 
 import com.example.demo.controller.AuthController;
-import jakarta.servlet.http.HttpSession;
+import com.example.demo.service.RedisService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.ServerHttpRequest;
@@ -39,16 +39,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      * la comparacion automatica "mismo origen" falla, por eso se declaran aqui.
      */
     private final String[] origenesPermitidos;
+    private final RedisService redisService;
 
-    public WebSocketConfig(@Value("${app.websocket.origenes}") String[] origenesPermitidos) {
+    public WebSocketConfig(@Value("${app.websocket.origenes}") String[] origenesPermitidos,
+                           RedisService redisService) {
         this.origenesPermitidos = origenesPermitidos;
+        this.redisService = redisService;
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns(origenesPermitidos)
-                .addInterceptors(new SoloConSesion());
+                .addInterceptors(new SoloConSesion(redisService));
     }
 
     @Override
@@ -74,15 +77,21 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         });
     }
 
-    /** Solo acepta el handshake si hay una sesion HTTP con usuario logueado. */
+    /** Solo acepta el handshake si hay una sesion HTTP o sesion en Redis con usuario logueado. */
     private static class SoloConSesion implements HandshakeInterceptor {
+
+        private final RedisService redisService;
+
+        SoloConSesion(RedisService redisService) {
+            this.redisService = redisService;
+        }
 
         @Override
         public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
                                        WebSocketHandler wsHandler, Map<String, Object> attributes) {
             if (request instanceof ServletServerHttpRequest servlet) {
-                HttpSession sesion = servlet.getServletRequest().getSession(false);
-                return sesion != null && sesion.getAttribute(AuthController.SESION_USUARIO_ID) != null;
+                Integer usuarioId = AuthController.resolverUsuarioId(servlet.getServletRequest(), redisService);
+                return usuarioId != null;
             }
             return false;
         }

@@ -1,8 +1,10 @@
 package com.example.demo.controller;
 
+import com.example.demo.config.SessionInterceptor;
 import com.example.demo.dto.AlumnoRequest;
 import com.example.demo.dto.AlumnoResponse;
 import com.example.demo.entity.SituacionAlumno;
+import com.example.demo.entity.Usuario;
 import com.example.demo.service.AlumnoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -38,8 +40,10 @@ public class AlumnoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public AlumnoResponse crear(@Valid @RequestBody AlumnoRequest request) {
-        return alumnoService.crear(request);
+    public AlumnoResponse crear(
+            @Valid @RequestBody AlumnoRequest request,
+            @RequestAttribute(value = SessionInterceptor.USUARIO_ACTUAL, required = false) Usuario usuario) {
+        return alumnoService.crear(request, usuario != null ? usuario.getUsername() : null);
     }
 
     @PutMapping("/{id}")
@@ -49,7 +53,9 @@ public class AlumnoController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void eliminar(@PathVariable Integer id) {
-        alumnoService.eliminar(id);
+    public void eliminar(
+            @PathVariable Integer id,
+            @RequestAttribute(value = SessionInterceptor.USUARIO_ACTUAL, required = false) Usuario usuario) {
+        alumnoService.eliminar(id, usuario != null ? usuario.getUsername() : null);
     }
 }

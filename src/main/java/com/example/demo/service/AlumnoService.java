@@ -7,6 +7,8 @@ import com.example.demo.exception.NegocioException;
 import com.example.demo.repository.AlumnoRepository;
 import com.example.demo.repository.AnioEscolarRepository;
 import com.example.demo.repository.MatriculaRepository;
+import com.example.demo.websocket.VacantesCambiadasEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +22,19 @@ public class AlumnoService {
     private final AlumnoRepository alumnoRepository;
     private final MatriculaRepository matriculaRepository;
     private final AnioEscolarRepository anioEscolarRepository;
+    private final RedisService redisService;
+    private final ApplicationEventPublisher eventos;
 
     public AlumnoService(AlumnoRepository alumnoRepository,
                          MatriculaRepository matriculaRepository,
-                         AnioEscolarRepository anioEscolarRepository) {
+                         AnioEscolarRepository anioEscolarRepository,
+                         RedisService redisService,
+                         ApplicationEventPublisher eventos) {
         this.alumnoRepository = alumnoRepository;
         this.matriculaRepository = matriculaRepository;
         this.anioEscolarRepository = anioEscolarRepository;
+        this.redisService = redisService;
+        this.eventos = eventos;
     }
 
     @Transactional(readOnly = true)
@@ -65,12 +73,26 @@ public class AlumnoService {
 
     @Transactional
     public AlumnoResponse crear(AlumnoRequest request) {
+        return crear(request, null);
+    }
+
+    @Transactional
+    public AlumnoResponse crear(AlumnoRequest request, String usuario) {
         if (alumnoRepository.existsByDni(request.dni())) {
             throw new NegocioException("Ya existe un alumno con DNI " + request.dni());
         }
         Alumno alumno = new Alumno(request.dni(), request.nombres().trim(), request.apellidos().trim(),
                 request.fechaNacimiento(), request.apoderado().trim(), vacioANull(request.telefonoApoderado()));
-        return AlumnoResponse.desde(alumnoRepository.save(alumno));
+        Alumno guardado = alumnoRepository.save(alumno);
+
+        redisService.invalidarDashboard();
+        String autor = (usuario == null || usuario.isBlank()) ? "sistema" : usuario;
+        eventos.publishEvent(new VacantesCambiadasEvent(
+                List.of(),
+                autor + " registro al alumno " + guardado.getNombreCompleto() + " (DNI " + guardado.getDni() + ")"
+        ));
+
+        return AlumnoResponse.desde(guardado);
     }
 
     @Transactional
@@ -85,15 +107,31 @@ public class AlumnoService {
         alumno.setFechaNacimiento(request.fechaNacimiento());
         alumno.setApoderado(request.apoderado().trim());
         alumno.setTelefonoApoderado(vacioANull(request.telefonoApoderado()));
+
+        eventos.publishEvent(new VacantesCambiadasEvent(List.of(), null));
         return obtenerPorId(alumno.getId(), null);
     }
 
     @Transactional
     public void eliminar(Integer id) {
+        eliminar(id, null);
+    }
+
+    @Transactional
+    public void eliminar(Integer id, String usuario) {
         if (matriculaRepository.existsByAlumnoId(id)) {
             throw new NegocioException("No se puede eliminar: el alumno tiene matriculas registradas");
         }
-        alumnoRepository.delete(buscarEntidad(id));
+        Alumno alumno = buscarEntidad(id);
+        String nombreCompleto = alumno.getNombreCompleto();
+        alumnoRepository.delete(alumno);
+
+        redisService.invalidarDashboard();
+        String autor = (usuario == null || usuario.isBlank()) ? "sistema" : usuario;
+        eventos.publishEvent(new VacantesCambiadasEvent(
+                List.of(),
+                autor + " elimino el registro del alumno " + nombreCompleto
+        ));
     }
 
     private Integer resolverAnioId(Integer anioId) {
