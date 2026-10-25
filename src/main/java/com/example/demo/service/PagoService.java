@@ -269,13 +269,45 @@ public class PagoService {
     }
 
     public synchronized String generarNumeroRecibo() {
-        long siguiente = reciboRepository.contarPorPrefijo("REC-") + 1;
-        return String.format("REC-%06d", siguiente);
+        return generarCorrelativo("REC-");
     }
 
     public synchronized String generarNumeroDevolucion() {
-        long siguiente = reciboRepository.contarPorPrefijo("DEV-") + 1;
-        return String.format("DEV-%06d", siguiente);
+        return generarCorrelativo("DEV-");
+    }
+
+    private String generarCorrelativo(String prefijo) {
+        long ultimoPorPrefijo = reciboRepository.findTopByNumeroStartingWithOrderByNumeroDesc(prefijo)
+                .map(r -> extraerCorrelativo(r.getNumero(), prefijo))
+                .orElse(0L);
+        long conteo = reciboRepository.contarPorPrefijo(prefijo);
+        long base = Math.max(ultimoPorPrefijo, conteo);
+
+        if ("REC-".equals(prefijo)) {
+            Integer ultimoId = reciboRepository.obtenerUltimoId();
+            if (ultimoId != null) {
+                base = Math.max(base, ultimoId.longValue());
+            }
+        }
+
+        long siguiente = base + 1;
+        String candidato;
+        do {
+            candidato = String.format("%s%06d", prefijo, siguiente);
+            siguiente++;
+        } while (reciboRepository.existsByNumero(candidato));
+        return candidato;
+    }
+
+    private long extraerCorrelativo(String numero, String prefijo) {
+        if (numero == null || !numero.startsWith(prefijo)) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(numero.substring(prefijo.length()).trim());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     private void avisar(List<Seccion> secciones, String actividad) {

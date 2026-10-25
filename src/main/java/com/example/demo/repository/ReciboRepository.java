@@ -3,6 +3,7 @@ package com.example.demo.repository;
 import com.example.demo.entity.Recibo;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -13,6 +14,10 @@ import java.util.Optional;
 public interface ReciboRepository extends JpaRepository<Recibo, Integer> {
 
     Optional<Recibo> findTopByOrderByIdDesc();
+
+    Optional<Recibo> findTopByNumeroStartingWithOrderByNumeroDesc(String prefijo);
+
+    boolean existsByNumero(String numero);
 
     @EntityGraph(attributePaths = {
             "matricula", "matricula.alumno", "matricula.seccion",
@@ -56,4 +61,14 @@ public interface ReciboRepository extends JpaRepository<Recibo, Integer> {
     boolean existsByMatriculaSeccionId(Integer seccionId);
 
     boolean existsByMatriculaSeccionAnioEscolarId(Integer anioId);
+
+    /** Rellena tipo = INGRESO y estado = EMITIDO en recibos existentes creados antes de esta version. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update Recibo r
+               set r.tipo = coalesce(r.tipo, com.example.demo.entity.TipoRecibo.INGRESO),
+                   r.estado = coalesce(r.estado, com.example.demo.entity.EstadoRecibo.EMITIDO)
+             where r.tipo is null or r.estado is null
+            """)
+    int migrarRecibosAntiguos();
 }

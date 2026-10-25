@@ -3,6 +3,7 @@ package com.example.demo.config;
 import com.example.demo.entity.*;
 import com.example.demo.repository.*;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,9 +25,11 @@ public class DataSeeder implements CommandLineRunner {
     private final SeccionRepository seccionRepository;
     private final AlumnoRepository alumnoRepository;
     private final MatriculaRepository matriculaRepository;
+    private final ReciboRepository reciboRepository;
     private final com.example.demo.service.PagoService pagoService;
     private final PasswordEncoder passwordEncoder;
     private final com.example.demo.repository.TarifaRepository tarifaRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public DataSeeder(UsuarioRepository usuarioRepository,
                       AnioEscolarRepository anioRepository,
@@ -35,9 +38,11 @@ public class DataSeeder implements CommandLineRunner {
                       SeccionRepository seccionRepository,
                       AlumnoRepository alumnoRepository,
                       MatriculaRepository matriculaRepository,
+                      ReciboRepository reciboRepository,
                       com.example.demo.service.PagoService pagoService,
                       PasswordEncoder passwordEncoder,
-                      com.example.demo.repository.TarifaRepository tarifaRepository) {
+                      com.example.demo.repository.TarifaRepository tarifaRepository,
+                      JdbcTemplate jdbcTemplate) {
         this.usuarioRepository = usuarioRepository;
         this.anioRepository = anioRepository;
         this.gradoRepository = gradoRepository;
@@ -45,15 +50,18 @@ public class DataSeeder implements CommandLineRunner {
         this.seccionRepository = seccionRepository;
         this.alumnoRepository = alumnoRepository;
         this.matriculaRepository = matriculaRepository;
+        this.reciboRepository = reciboRepository;
         this.pagoService = pagoService;
         this.passwordEncoder = passwordEncoder;
         this.tarifaRepository = tarifaRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /** Se ejecuta una sola vez, justo despues de arrancar la aplicacion. */
     @Override
     @Transactional
     public void run(String... args) {
+        migrarColumnasEstados();
         usuarios();
         AnioEscolar anio = anioEscolar();
         List<Grado> grados = grados();
@@ -62,7 +70,38 @@ public class DataSeeder implements CommandLineRunner {
         tarifas(anio);
         alumnos();
         migrarMatriculasAntiguas();
+        migrarRecibosAntiguos();
         inscripcionesYPagos(anio);
+    }
+
+    /**
+     * Si la BD ya existia antes, Hibernate en MySQL pudo haber creado 'cuota.estado'
+     * como ENUM('DEBE','PAGADO') o 'concepto' con longitud menor. Lo convertimos a VARCHAR
+     * para que acepte sin problemas los nuevos estados (ANULADA, DEVUELTA, etc.).
+     */
+    private void migrarColumnasEstados() {
+        List<String> sentencias = List.of(
+                "ALTER TABLE cuota MODIFY COLUMN estado VARCHAR(20) NOT NULL",
+                "ALTER TABLE matricula MODIFY COLUMN estado VARCHAR(20) NOT NULL",
+                "ALTER TABLE recibo MODIFY COLUMN tipo VARCHAR(20)",
+                "ALTER TABLE recibo MODIFY COLUMN estado VARCHAR(20)",
+                "ALTER TABLE recibo MODIFY COLUMN concepto VARCHAR(120) NOT NULL"
+        );
+        for (String sql : sentencias) {
+            try {
+                jdbcTemplate.execute(sql);
+            } catch (Exception ignored) {
+                // En H2 (tests) la sintaxis es distinta y la columna ya se crea actualizada
+            }
+        }
+    }
+
+    /** Rellena tipo = INGRESO y estado = EMITIDO en recibos existentes creados antes de esta version. */
+    private void migrarRecibosAntiguos() {
+        int migrados = reciboRepository.migrarRecibosAntiguos();
+        if (migrados > 0) {
+            System.out.println(">>> Recibos antiguos actualizados (INGRESO / EMITIDO): " + migrados);
+        }
     }
 
     private void tarifas(AnioEscolar anio) {

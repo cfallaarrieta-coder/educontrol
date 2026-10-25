@@ -58,6 +58,7 @@ public class GlobalExceptionHandler {
     /** Clave unica o foranea violada (respaldo de las validaciones del service) -> 409 */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<MensajeResponse> integridad(DataIntegrityViolationException ex) {
+        System.err.println(">>> Error de integridad en BD: " + ex.getMostSpecificCause().getMessage());
         return responder(HttpStatus.CONFLICT,
                 "No se pudo guardar: el dato ya existe o esta relacionado con otros registros");
     }
