@@ -1,7 +1,9 @@
 package com.example.demo;
 
+import com.example.demo.dto.AnularMatriculaRequest;
 import com.example.demo.dto.MatriculaRequest;
 import com.example.demo.dto.MatriculaResponse;
+import com.example.demo.dto.ReciboResponse;
 import com.example.demo.entity.*;
 import com.example.demo.exception.NegocioException;
 import com.example.demo.repository.*;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +21,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntFunction;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Prueba el BLOQUEO PESIMISTA lanzando muchas matriculas EXACTAMENTE a la vez.
@@ -119,7 +122,7 @@ class MatriculaConcurrenciaTest {
         assertEquals(false, cc.cuotas().get(1).pagable(), "Abril no debe ser pagable si Marzo no esta pagado");
 
         // Intentar pagar Abril directamente debe lanzar excepcion de negocio
-        org.junit.jupiter.api.Assertions.assertThrows(NegocioException.class, () ->
+        assertThrows(NegocioException.class, () ->
                 pagoService.pagarCuota(cc.cuotas().get(1).id(), null, "cajero"));
 
         // Pagar Marzo
@@ -134,6 +137,59 @@ class MatriculaConcurrenciaTest {
         pagoService.pagarCuota(ccDespues.cuotas().get(1).id(), null, "cajero");
         var ccFinal = pagoService.obtenerCuentaCorriente(ins.id());
         assertEquals(EstadoCuota.PAGADO, ccFinal.cuotas().get(1).estado());
+    }
+
+    @Test
+    void anulacionConDevolucionParcialYTotal_emiteBoletasDevIndividualesYDejaDeudaCero() {
+        Seccion seccion = crearSeccion("D", 5);
+        Alumno alumno = crearAlumnos(1).getFirst();
+
+        MatriculaResponse ins = matriculaService.inscribir(new MatriculaRequest(alumno.getId(), seccion.getId()), "secretaria");
+        ReciboResponse recMat = pagoService.pagarMatricula(ins.id(), null, "admin");
+
+        var ccInicial = pagoService.obtenerCuentaCorriente(ins.id());
+        ReciboResponse recMarzo = pagoService.pagarCuota(ccInicial.cuotas().get(0).id(), null, "admin");
+        ReciboResponse recAbril = pagoService.pagarCuota(ccInicial.cuotas().get(1).id(), null, "admin");
+
+        // 1) SECRETARIA (esAdmin = false) NO puede anular una matricula con pagos
+        assertThrows(NegocioException.class, () ->
+                matriculaService.anular(ins.id(), new AnularMatriculaRequest("Intento secretaria", List.of(), "EFECTIVO"), "secretaria", false));
+
+        // 2) ADMIN anula y devuelve solo Abril (Devolucion Parcial: Matricula y Marzo quedan EMITIDO)
+        MatriculaResponse anulada = matriculaService.anular(
+                ins.id(),
+                new AnularMatriculaRequest("Retiro a fines de Marzo, se devuelve Abril adelantado", List.of(recAbril.id()), "TRANSFERENCIA"),
+                "admin",
+                true
+        );
+
+        assertEquals(EstadoMatricula.ANULADA, anulada.estado());
+        assertEquals(1, anulada.boletasDevolucion().size(), "Debe haberse emitido 1 boleta DEV- por Abril");
+        ReciboResponse boletaDev = anulada.boletasDevolucion().getFirst();
+        assertTrue(boletaDev.numero().startsWith("DEV-"), "La boleta debe usar serie DEV-");
+        assertEquals(TipoRecibo.DEVOLUCION, boletaDev.tipo());
+        assertEquals(EstadoRecibo.EMITIDO, boletaDev.estado());
+        assertEquals(recAbril.id(), boletaDev.reciboOrigenId());
+        assertEquals(recAbril.numero(), boletaDev.reciboOrigenNumero());
+
+        // 3) Verificar estado de cuenta tras la anulacion:
+        //    - Deuda total = S/ 0.00 (Mayo..Diciembre pasaron a ANULADA)
+        //    - Marzo sigue PAGADO, Abril paso a DEVUELTA
+        var ccPost = pagoService.obtenerCuentaCorriente(ins.id());
+        assertEquals(0, BigDecimal.ZERO.compareTo(ccPost.totalDeuda()), "La deuda pendiente debe quedar en S/ 0.00");
+        assertEquals(0, recMat.monto().add(recMarzo.monto()).compareTo(ccPost.totalPagado()), "Total pagado neto = Matricula + Marzo");
+        assertEquals(0, recAbril.monto().compareTo(ccPost.totalDevuelto()), "Total devuelto = Abril");
+        assertEquals(EstadoCuota.PAGADO, ccPost.cuotas().get(0).estado());
+        assertEquals(EstadoCuota.DEVUELTA, ccPost.cuotas().get(1).estado());
+        assertEquals(boletaDev.numero(), ccPost.cuotas().get(1).boletaDevolucionNumero());
+        for (int i = 2; i < 10; i++) {
+            assertEquals(EstadoCuota.ANULADA, ccPost.cuotas().get(i).estado(), "Las cuotas futuras deben quedar ANULADA");
+        }
+
+        // 4) El alumno puede volver a inscribirse en el mismo anio (creando una nueva Matricula limpia)
+        MatriculaResponse reInscripcion = matriculaService.inscribir(new MatriculaRequest(alumno.getId(), seccion.getId()), "secretaria");
+        assertNotEquals(ins.id(), reInscripcion.id());
+        assertEquals(EstadoMatricula.INSCRITA, reInscripcion.estado());
     }
 
     // =========================================================

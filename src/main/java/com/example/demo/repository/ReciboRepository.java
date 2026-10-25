@@ -14,10 +14,26 @@ public interface ReciboRepository extends JpaRepository<Recibo, Integer> {
 
     Optional<Recibo> findTopByOrderByIdDesc();
 
-    @EntityGraph(attributePaths = {"matricula", "matricula.alumno", "matricula.seccion", "matricula.seccion.grado"})
+    @EntityGraph(attributePaths = {
+            "matricula", "matricula.alumno", "matricula.seccion",
+            "matricula.seccion.grado", "matricula.seccion.anioEscolar",
+            "reciboOrigen", "boletaDevolucion"
+    })
     List<Recibo> findByMatriculaIdOrderByFechaDesc(Integer matriculaId);
 
-    @EntityGraph(attributePaths = {"matricula", "matricula.alumno", "matricula.seccion", "matricula.seccion.grado"})
+    @EntityGraph(attributePaths = {
+            "matricula", "matricula.alumno", "matricula.seccion",
+            "matricula.seccion.grado", "matricula.seccion.anioEscolar",
+            "reciboOrigen", "boletaDevolucion"
+    })
+    @Query("select r from Recibo r where r.id = :id")
+    Optional<Recibo> findDetalleById(Integer id);
+
+    @EntityGraph(attributePaths = {
+            "matricula", "matricula.alumno", "matricula.seccion",
+            "matricula.seccion.grado", "matricula.seccion.anioEscolar",
+            "reciboOrigen", "boletaDevolucion"
+    })
     @Query("""
             select r from Recibo r
             where (:anioId is null or r.matricula.seccion.anioEscolar.id = :anioId)
@@ -27,9 +43,12 @@ public interface ReciboRepository extends JpaRepository<Recibo, Integer> {
                    or r.matricula.alumno.dni like concat('%', :texto, '%')
                    or lower(r.matricula.alumno.apellidos) like lower(concat('%', :texto, '%'))
                    or lower(r.matricula.alumno.nombres) like lower(concat('%', :texto, '%')))
-            order by r.fecha desc
+            order by r.fecha desc, r.id desc
             """)
     List<Recibo> filtrar(Integer anioId, Integer matriculaId, String texto);
+
+    @Query("select count(r) from Recibo r where r.numero like concat(:prefijo, '%')")
+    long contarPorPrefijo(String prefijo);
 
     @Query("select coalesce(max(r.id), 0) from Recibo r")
     Integer obtenerUltimoId();

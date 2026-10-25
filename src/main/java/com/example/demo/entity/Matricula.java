@@ -35,6 +35,15 @@ public class Matricula {
     @JoinColumn(name = "recibo_matricula_id")
     private Recibo reciboMatricula;
 
+    @Column(name = "fecha_anulacion")
+    private LocalDateTime fechaAnulacion;
+
+    @Column(name = "anulado_por", length = 50)
+    private String anuladoPor;
+
+    @Column(name = "motivo_anulacion", length = 200)
+    private String motivoAnulacion;
+
     public Matricula() {
     }
 
@@ -100,5 +109,29 @@ public class Matricula {
 
     public void setReciboMatricula(Recibo reciboMatricula) {
         this.reciboMatricula = reciboMatricula;
+    }
+
+    public LocalDateTime getFechaAnulacion() {
+        return fechaAnulacion;
+    }
+
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) {
+        this.fechaAnulacion = fechaAnulacion;
+    }
+
+    public String getAnuladoPor() {
+        return anuladoPor;
+    }
+
+    public void setAnuladoPor(String anuladoPor) {
+        this.anuladoPor = anuladoPor;
+    }
+
+    public String getMotivoAnulacion() {
+        return motivoAnulacion;
+    }
+
+    public void setMotivoAnulacion(String motivoAnulacion) {
+        this.motivoAnulacion = motivoAnulacion;
     }
 }

@@ -2,6 +2,7 @@ package com.example.demo.dto;
 
 import com.example.demo.entity.Cuota;
 import com.example.demo.entity.EstadoCuota;
+import com.example.demo.entity.Recibo;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,9 +18,13 @@ public record CuotaResponse(
         boolean pagable,
         Integer reciboId,
         String reciboNumero,
-        LocalDateTime fechaPago
+        LocalDateTime fechaPago,
+        Integer boletaDevolucionId,
+        String boletaDevolucionNumero
 ) {
     public static CuotaResponse desde(Cuota c, boolean pagable) {
+        Recibo rec = c.getRecibo();
+        Recibo dev = (rec != null) ? rec.getBoletaDevolucion() : null;
         return new CuotaResponse(
                 c.getId(),
                 c.getNumeroCuota(),
@@ -28,9 +33,11 @@ public record CuotaResponse(
                 c.getEstado(),
                 c.getFechaVencimiento(),
                 pagable,
-                c.getRecibo() != null ? c.getRecibo().getId() : null,
-                c.getRecibo() != null ? c.getRecibo().getNumero() : null,
-                c.getRecibo() != null ? c.getRecibo().getFecha() : null
+                rec != null ? rec.getId() : null,
+                rec != null ? rec.getNumero() : null,
+                rec != null ? rec.getFecha() : null,
+                dev != null ? dev.getId() : null,
+                dev != null ? dev.getNumero() : null
         );
     }
 }

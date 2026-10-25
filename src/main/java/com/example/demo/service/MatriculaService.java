@@ -1,12 +1,16 @@
 package com.example.demo.service;
 
+import com.example.demo.dto.AnularMatriculaRequest;
 import com.example.demo.dto.MatriculaRequest;
 import com.example.demo.dto.MatriculaResponse;
+import com.example.demo.dto.ReciboResponse;
 import com.example.demo.dto.VacanteMensaje;
 import com.example.demo.entity.*;
 import com.example.demo.exception.NegocioException;
 import com.example.demo.repository.AlumnoRepository;
+import com.example.demo.repository.CuotaRepository;
 import com.example.demo.repository.MatriculaRepository;
+import com.example.demo.repository.ReciboRepository;
 import com.example.demo.repository.SeccionRepository;
 import com.example.demo.websocket.VacantesCambiadasEvent;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +18,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Matricula, anulacion y traslado con BLOQUEO PESIMISTA.
@@ -30,6 +38,9 @@ public class MatriculaService {
     private final MatriculaRepository matriculaRepository;
     private final AlumnoRepository alumnoRepository;
     private final SeccionRepository seccionRepository;
+    private final CuotaRepository cuotaRepository;
+    private final ReciboRepository reciboRepository;
+    private final PagoService pagoService;
     private final ApplicationEventPublisher eventos;
 
     /**
@@ -42,11 +53,17 @@ public class MatriculaService {
     public MatriculaService(MatriculaRepository matriculaRepository,
                             AlumnoRepository alumnoRepository,
                             SeccionRepository seccionRepository,
+                            CuotaRepository cuotaRepository,
+                            ReciboRepository reciboRepository,
+                            PagoService pagoService,
                             ApplicationEventPublisher eventos,
                             @Value("${app.demo.retardo-matricula-ms:0}") long retardoDemoMs) {
         this.matriculaRepository = matriculaRepository;
         this.alumnoRepository = alumnoRepository;
         this.seccionRepository = seccionRepository;
+        this.cuotaRepository = cuotaRepository;
+        this.reciboRepository = reciboRepository;
+        this.pagoService = pagoService;
         this.eventos = eventos;
         this.retardoDemoMs = retardoDemoMs;
     }
@@ -118,17 +135,47 @@ public class MatriculaService {
     }
 
     // =========================================================
-    // ANULAR
+    // ANULAR (Con soporte de anulacion de deuda y boletas DEV-...)
     // =========================================================
     @Transactional
     public MatriculaResponse anular(Integer matriculaId, String usuario) {
+        return anular(matriculaId, null, usuario, true);
+    }
 
-        // Bloquea la matricula
+    @Transactional
+    public MatriculaResponse anular(Integer matriculaId, AnularMatriculaRequest request, Usuario usuarioActual) {
+        boolean esAdmin = usuarioActual != null && usuarioActual.esAdmin();
+        String username = usuarioActual != null ? usuarioActual.getUsername() : "sistema";
+        return anular(matriculaId, request, username, esAdmin);
+    }
+
+    @Transactional
+    public MatriculaResponse anular(Integer matriculaId, AnularMatriculaRequest request, String usuario, boolean esAdmin) {
+
+        // 1) Bloquea la matricula
         Matricula matricula = bloquearMatricula(matriculaId);
 
         if (matricula.estaAnulada()) {
             throw new NegocioException("La matricula ya estaba anulada");
         }
+
+        boolean eraMatriculada = matricula.getEstado() == EstadoMatricula.MATRICULADA;
+        if (eraMatriculada && !esAdmin) {
+            throw new NegocioException("Solo un usuario con rol ADMIN puede autorizar la anulacion de una matricula con pagos registrados");
+        }
+
+        String motivo;
+        if (request != null && request.motivo() != null && !request.motivo().isBlank()) {
+            motivo = request.motivo().trim();
+        } else if (eraMatriculada && request != null) {
+            throw new NegocioException("El motivo de anulacion es obligatorio");
+        } else {
+            motivo = "Anulacion de registro";
+        }
+
+        String metodoDevolucion = (request != null && request.metodoDevolucion() != null && !request.metodoDevolucion().isBlank())
+                ? request.metodoDevolucion().trim().toUpperCase()
+                : "EFECTIVO";
 
         Seccion seccion = seccionRepository.findByIdParaActualizar(matricula.getSeccion().getId())
                 .orElseThrow(() -> new NegocioException("La seccion no existe"));
@@ -136,16 +183,82 @@ public class MatriculaService {
         validarAnioAbierto(seccion);
         pausaDemo();
 
-        // Si estaba formalizada (MATRICULADA), devuelve la vacante que habia ocupado
-        if (matricula.getEstado() == EstadoMatricula.MATRICULADA) {
+        LocalDateTime ahora = LocalDateTime.now();
+        List<ReciboResponse> boletasDevolucion = new ArrayList<>();
+
+        // Si estaba formalizada (MATRICULADA):
+        // - Las cuotas pendientes (DEBE) pasan a ANULADA (deuda queda en S/ 0.00)
+        // - Los recibos seleccionados pasan a DEVUELTO y emiten 1 a 1 su Boleta de Devolucion (DEV-00000X)
+        // - Se libera la vacante ocupada en la seccion
+        if (eraMatriculada) {
+            List<Cuota> cuotas = cuotaRepository.findByMatriculaIdOrderByNumeroCuotaAsc(matriculaId);
+            for (Cuota c : cuotas) {
+                if (c.estaDebe()) {
+                    c.setEstado(EstadoCuota.ANULADA);
+                }
+            }
+
+            if (request != null && request.recibosADevolverIds() != null && !request.recibosADevolverIds().isEmpty()) {
+                Set<Integer> idsUnicos = new LinkedHashSet<>(request.recibosADevolverIds());
+                for (Integer reciboId : idsUnicos) {
+                    if (reciboId == null) continue;
+
+                    Recibo reciboOriginal = reciboRepository.findById(reciboId)
+                            .orElseThrow(() -> new NegocioException("No existe el recibo " + reciboId));
+
+                    if (!reciboOriginal.getMatricula().getId().equals(matriculaId)) {
+                        throw new NegocioException("El recibo " + reciboOriginal.getNumero() + " no pertenece a esta matricula");
+                    }
+                    if (reciboOriginal.getTipo() != TipoRecibo.INGRESO) {
+                        throw new NegocioException("Solo se pueden reembolsar recibos de ingreso (REC-...)");
+                    }
+                    if (reciboOriginal.getEstado() == EstadoRecibo.DEVUELTO) {
+                        throw new NegocioException("El recibo " + reciboOriginal.getNumero() + " ya fue devuelto previamente");
+                    }
+
+                    // 4a. Marca Recibo original como DEVUELTO
+                    reciboOriginal.setEstado(EstadoRecibo.DEVUELTO);
+                    reciboOriginal.setMotivoAnulacion(motivo);
+                    reciboOriginal.setFechaAnulacion(ahora);
+                    reciboOriginal.setAnuladoPor(usuario);
+                    reciboRepository.save(reciboOriginal);
+
+                    // 4b. Si pertenece a una Cuota, pasa la Cuota a DEVUELTA
+                    for (Cuota c : cuotas) {
+                        if (c.getRecibo() != null && c.getRecibo().getId().equals(reciboOriginal.getId())) {
+                            c.setEstado(EstadoCuota.DEVUELTA);
+                            break;
+                        }
+                    }
+
+                    // 4c. Crea y guarda la nueva Boleta de Devolucion individual (DEV-00000X)
+                    String numeroDev = pagoService.generarNumeroDevolucion();
+                    Recibo boletaDev = Recibo.crearDevolucion(numeroDev, reciboOriginal, motivo, usuario, metodoDevolucion);
+                    boletaDev = reciboRepository.save(boletaDev);
+                    reciboOriginal.setBoletaDevolucion(boletaDev);
+
+                    boletasDevolucion.add(ReciboResponse.desde(boletaDev));
+                }
+            }
+
+            cuotaRepository.saveAll(cuotas);
             seccion.liberarVacante();
         }
+
         matricula.setEstado(EstadoMatricula.ANULADA);
+        matricula.setFechaAnulacion(ahora);
+        matricula.setAnuladoPor(usuario);
+        matricula.setMotivoAnulacion(motivo);
+        matriculaRepository.save(matricula);
+
+        String detalleDev = boletasDevolucion.isEmpty()
+                ? ""
+                : " · " + boletasDevolucion.size() + " boleta(s) de devolucion emitida(s)";
 
         avisar(List.of(seccion), usuario + " anulo el registro de "
-                + matricula.getAlumno().getNombreCompleto() + " (" + seccion.getDescripcion() + ")");
+                + matricula.getAlumno().getNombreCompleto() + " (" + seccion.getDescripcion() + ")" + detalleDev);
 
-        return MatriculaResponse.desde(matricula);
+        return MatriculaResponse.desde(matricula, boletasDevolucion);
     }
 
     // =========================================================

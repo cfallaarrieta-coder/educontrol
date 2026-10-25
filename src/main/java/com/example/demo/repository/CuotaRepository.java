@@ -14,10 +14,12 @@ import java.util.Optional;
 @Repository
 public interface CuotaRepository extends JpaRepository<Cuota, Integer> {
 
-    @EntityGraph(attributePaths = {"recibo"})
+    @EntityGraph(attributePaths = {"recibo", "recibo.boletaDevolucion"})
     List<Cuota> findByMatriculaIdOrderByNumeroCuotaAsc(Integer matriculaId);
 
     Optional<Cuota> findByMatriculaIdAndNumeroCuota(Integer matriculaId, Integer numeroCuota);
+
+    Optional<Cuota> findByReciboId(Integer reciboId);
 
     boolean existsByMatriculaIdAndNumeroCuotaAndEstado(Integer matriculaId, Integer numeroCuota, EstadoCuota estado);
 

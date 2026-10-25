@@ -56,38 +56,57 @@ public class PagoService {
                 .orElseThrow(() -> new NegocioException("No existe la matricula " + matriculaId));
 
         BigDecimal costoMatricula = tarifaRepository.findByAnioEscolarIdAndNivel(
-                matricula.getSeccion().getAnioEscolar().getId(), 
+                matricula.getSeccion().getAnioEscolar().getId(),
                 matricula.getSeccion().getGrado().getNivel()
         ).map(Tarifa::getMontoMatricula).orElse(BigDecimal.ZERO);
-        boolean matriculaPagada = matricula.getEstado() == EstadoMatricula.MATRICULADA;
+
         Recibo reciboMatricula = matricula.getReciboMatricula();
+        boolean matriculaActiva = matricula.getEstado() == EstadoMatricula.MATRICULADA;
+        boolean matriculaPagada = matriculaActiva || reciboMatricula != null;
 
         List<Cuota> cuotasEntidad = cuotaRepository.findByMatriculaIdOrderByNumeroCuotaAsc(matriculaId);
+        List<ReciboResponse> recibosMatricula = reciboRepository.findByMatriculaIdOrderByFechaDesc(matriculaId)
+                .stream()
+                .map(ReciboResponse::desde)
+                .toList();
 
         List<CuotaResponse> cuotasResponse = new ArrayList<>();
-        boolean mesAnteriorPagado = matriculaPagada;
+        boolean mesAnteriorPagado = matriculaActiva;
 
         BigDecimal totalDeuda = BigDecimal.ZERO;
         BigDecimal totalPagado = BigDecimal.ZERO;
+        BigDecimal totalDevuelto = BigDecimal.ZERO;
 
-        if (matriculaPagada && reciboMatricula != null) {
-            totalPagado = totalPagado.add(reciboMatricula.getMonto());
+        if (reciboMatricula != null) {
+            if (reciboMatricula.getEstado() == EstadoRecibo.DEVUELTO) {
+                totalDevuelto = totalDevuelto.add(reciboMatricula.getMonto());
+            } else {
+                totalPagado = totalPagado.add(reciboMatricula.getMonto());
+            }
         } else if (!matricula.estaAnulada()) {
             totalDeuda = totalDeuda.add(costoMatricula);
         }
 
         for (Cuota c : cuotasEntidad) {
-            boolean pagable = matriculaPagada && c.estaDebe() && mesAnteriorPagado;
+            boolean pagable = matriculaActiva && c.estaDebe() && mesAnteriorPagado;
             cuotasResponse.add(CuotaResponse.desde(c, pagable));
 
             if (c.estaPagado()) {
                 totalPagado = totalPagado.add(c.getMonto());
                 mesAnteriorPagado = true;
-            } else {
+            } else if (c.estaDevuelta()) {
+                totalDevuelto = totalDevuelto.add(c.getMonto());
+                mesAnteriorPagado = false;
+            } else if (c.estaDebe()) {
                 totalDeuda = totalDeuda.add(c.getMonto());
+                mesAnteriorPagado = false;
+            } else {
+                // EstadoCuota.ANULADA -> no suma a la deuda (queda en S/ 0.00)
                 mesAnteriorPagado = false;
             }
         }
+
+        Recibo devMatricula = reciboMatricula != null ? reciboMatricula.getBoletaDevolucion() : null;
 
         return new CuentaCorrienteResponse(
                 matricula.getId(),
@@ -99,14 +118,22 @@ public class PagoService {
                 matricula.getSeccion().getGrado().getNivel().name(),
                 matricula.getSeccion().getAnioEscolar().getAnio(),
                 matricula.getEstado(),
+                matricula.getMotivoAnulacion(),
+                matricula.getFechaAnulacion(),
+                matricula.getAnuladoPor(),
                 costoMatricula,
                 matriculaPagada,
                 reciboMatricula != null ? reciboMatricula.getId() : null,
                 reciboMatricula != null ? reciboMatricula.getNumero() : null,
                 reciboMatricula != null ? reciboMatricula.getFecha() : null,
+                reciboMatricula != null ? reciboMatricula.getEstado() : null,
+                devMatricula != null ? devMatricula.getId() : null,
+                devMatricula != null ? devMatricula.getNumero() : null,
                 cuotasResponse,
+                recibosMatricula,
                 totalDeuda,
-                totalPagado
+                totalPagado,
+                totalDevuelto
         );
     }
 
@@ -184,6 +211,9 @@ public class PagoService {
         if (cuota.estaPagado()) {
             throw new NegocioException("Esta cuota mensual ya ha sido pagada previamente");
         }
+        if (cuota.estaAnulada() || cuota.estaDevuelta()) {
+            throw new NegocioException("No se puede cobrar una cuota de una matricula anulada");
+        }
 
         Matricula matricula = cuota.getMatricula();
         if (matricula.getEstado() != EstadoMatricula.MATRICULADA) {
@@ -233,14 +263,19 @@ public class PagoService {
 
     @Transactional(readOnly = true)
     public ReciboResponse obtenerRecibo(Integer id) {
-        return reciboRepository.findById(id)
+        return reciboRepository.findDetalleById(id)
                 .map(ReciboResponse::desde)
                 .orElseThrow(() -> new NegocioException("No existe el recibo " + id));
     }
 
-    private synchronized String generarNumeroRecibo() {
-        int siguiente = reciboRepository.obtenerUltimoId() + 1;
+    public synchronized String generarNumeroRecibo() {
+        long siguiente = reciboRepository.contarPorPrefijo("REC-") + 1;
         return String.format("REC-%06d", siguiente);
+    }
+
+    public synchronized String generarNumeroDevolucion() {
+        long siguiente = reciboRepository.contarPorPrefijo("DEV-") + 1;
+        return String.format("DEV-%06d", siguiente);
     }
 
     private void avisar(List<Seccion> secciones, String actividad) {

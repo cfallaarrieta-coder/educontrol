@@ -44,7 +44,9 @@ var App = (function () {
         ABIERTO: 'Abierto', CERRADO: 'Cerrado',
         INSCRITA: 'Inscrito', MATRICULADA: 'Matriculado', ANULADA: 'Anulada',
         SIN_MATRICULA: 'Sin inscripción',
-        DEBE: 'Debe', PAGADO: 'Pagado'
+        DEBE: 'Debe', PAGADO: 'Pagado', DEVUELTA: 'Devuelta',
+        EMITIDO: 'Emitido', DEVUELTO: 'Devuelto',
+        INGRESO: 'Boleta de Ingreso', DEVOLUCION: 'Boleta de Devolución'
     };
 
     // =========================================================

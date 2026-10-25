@@ -26,8 +26,8 @@ public class Cuota {
     private BigDecimal monto;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "estado", nullable = false, length = 10)
-    private EstadoCuota estado; // DEBE, PAGADO
+    @Column(name = "estado", nullable = false, length = 20)
+    private EstadoCuota estado; // DEBE, PAGADO, ANULADA, DEVUELTA
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recibo_id")
@@ -54,6 +54,14 @@ public class Cuota {
 
     public boolean estaDebe() {
         return estado == EstadoCuota.DEBE;
+    }
+
+    public boolean estaAnulada() {
+        return estado == EstadoCuota.ANULADA;
+    }
+
+    public boolean estaDevuelta() {
+        return estado == EstadoCuota.DEVUELTA;
     }
 
     public Integer getId() {

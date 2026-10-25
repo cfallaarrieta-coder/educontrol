@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.config.SessionInterceptor;
+import com.example.demo.dto.AnularMatriculaRequest;
 import com.example.demo.dto.MatriculaRequest;
 import com.example.demo.dto.MatriculaResponse;
 import com.example.demo.dto.TrasladoRequest;
@@ -57,12 +58,14 @@ public class MatriculaController {
     /** POST /api/matriculas/{id}/anular */
     @PostMapping("/{id}/anular")
     public MatriculaResponse anular(@PathVariable Integer id,
+                                    @Valid @RequestBody(required = false) AnularMatriculaRequest request,
                                     @RequestAttribute(SessionInterceptor.USUARIO_ACTUAL) Usuario usuario) {
-        return matriculaService.anular(id, usuario.getUsername());
+        return matriculaService.anular(id, request, usuario);
     }
 
     /** POST /api/matriculas/{id}/traslado  { "seccionDestinoId": 6 } */
     @PostMapping("/{id}/traslado")
+    @Deprecated
     public MatriculaResponse trasladar(@PathVariable Integer id,
                                        @Valid @RequestBody TrasladoRequest request,
                                        @RequestAttribute(SessionInterceptor.USUARIO_ACTUAL) Usuario usuario) {

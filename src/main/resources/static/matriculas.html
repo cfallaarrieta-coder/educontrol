@@ -8,6 +8,96 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
     <script src="js/app.js"></script>
+    <style>
+        .lista-recibos-devolucion {
+            border: 1px solid var(--borde);
+            border-radius: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+            margin: 8px 0 12px;
+            background: #f8fafc;
+        }
+        .item-recibo-dev {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .item-recibo-dev:last-child { border-bottom: none; }
+        .item-recibo-dev:hover { background: #eef4fc; }
+        .resumen-devolucion {
+            background: #fff8e1;
+            border-left: 4px solid var(--acento);
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .recibo-impresion {
+            border: 2px dashed #94a3b8;
+            padding: 24px;
+            background: #fff;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            color: #1e293b;
+        }
+        .recibo-cabecera { text-align: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 12px; margin-bottom: 14px; }
+        .recibo-cabecera h2 { margin: 0; font-size: 18px; }
+        .recibo-fila { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 13px; }
+        .recibo-total { border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; margin: 12px 0; font-size: 16px; font-weight: bold; }
+        .recibo-firmas {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            margin-top: 34px;
+            padding-top: 10px;
+            font-size: 11px;
+            text-align: center;
+        }
+        .recibo-firma-linea {
+            flex: 1;
+            border-top: 1px solid #334155;
+            padding-top: 6px;
+        }
+        @media print {
+            .navbar, #toasts, .no-imprimir, .contenedor {
+                display: none !important;
+            }
+            body {
+                background: #fff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .modal-fondo {
+                position: static !important;
+                background: transparent !important;
+                padding: 0 !important;
+                display: block !important;
+                inset: auto !important;
+                overflow: visible !important;
+            }
+            .modal {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+                margin: 0 auto !important;
+                background: transparent !important;
+            }
+            .recibo-impresion {
+                border: 2px dashed #475569 !important;
+                padding: 24px !important;
+                max-width: 480px !important;
+                margin: 20px auto !important;
+                background: #fff !important;
+                page-break-inside: avoid !important;
+            }
+        }
+    </style>
 </head>
 <body>
 
@@ -52,6 +142,21 @@
     </div>
 
 </main>
+
+<!-- MODAL DE BOLETA DE DEVOLUCION / RECIBO -->
+<div class="modal-fondo" id="modalBoletaImpresion" hidden>
+    <div class="modal" style="max-width: 520px;">
+        <div class="no-imprimir" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; font-size:16px;" id="tituloModalBoleta">Boleta de Devolución</h2>
+            <button type="button" class="btn-gris btn-chico" id="btnCerrarModalBoleta">✕</button>
+        </div>
+        <div id="contenidoBoletaImpresion" class="recibo-impresion"></div>
+        <div class="botones no-imprimir" style="margin-top:16px;">
+            <button type="button" class="btn-gris" id="btnImprimirBoleta">🖨 Imprimir</button>
+            <button type="button" class="btn" id="btnListoBoleta">Cerrar</button>
+        </div>
+    </div>
+</div>
 
 <script>
 
@@ -131,31 +236,47 @@
             return;
         }
 
+        var esAdmin = App.esAdmin();
+
         $('#tabla').html(matriculas.map(function (m) {
             var esMatriculada = m.estado === 'MATRICULADA';
             var esInscrita = m.estado === 'INSCRITA';
             var noAnulada = m.estado !== 'ANULADA';
 
             var claseBadge = esMatriculada ? 'et-verde' : (esInscrita ? 'et-amarillo' : 'et-gris');
+            var infoAnulacion = '';
+            if (!noAnulada && m.motivoAnulacion) {
+                infoAnulacion = '<div style="font-size:11px; color:#64748b; margin-top:3px;">Motivo: ' +
+                    App.escapar(m.motivoAnulacion) +
+                    (m.anuladoPor ? ' · por <b>' + App.escapar(m.anuladoPor) + '</b>' : '') + '</div>';
+            }
 
-            var btnCaja = noAnulada
-                ? '<a href="pagos.html?matriculaId=' + m.id + '" class="btn btn-chico ' + (esInscrita ? 'btn-verde' : 'btn-gris') + '" style="text-decoration:none; margin-right:4px;">💳 ' + (esInscrita ? 'Cobrar Matrícula' : 'Caja / Pagos') + '</a>'
-                : '';
+            var btnCaja = '';
+            if (noAnulada) {
+                btnCaja = '<a href="pagos.html?matriculaId=' + m.id + '" class="btn btn-chico ' + (esInscrita ? 'btn-verde' : 'btn-gris') + '" style="text-decoration:none; margin-right:4px;">💳 ' + (esInscrita ? 'Cobrar Matrícula' : 'Caja / Pagos') + '</a>';
+            } else if (m.tienePagos) {
+                btnCaja = '<a href="pagos.html?matriculaId=' + m.id + '" class="btn btn-chico btn-gris" style="text-decoration:none; margin-right:4px;">📄 Ver Cuenta / Boletas</a>';
+            }
 
             var btnTrasladar = noAnulada
                 ? '<button type="button" class="btn-chico btn-naranja btn-trasladar" data-id="' + m.id + '">Trasladar</button>'
                 : '';
 
-            var btnAnular = noAnulada
-                ? '<button type="button" class="btn-chico btn-rojo btn-anular" data-id="' + m.id + '">Anular</button>'
-                : '';
+            var btnAnular = '';
+            if (noAnulada) {
+                if (esMatriculada && !esAdmin) {
+                    btnAnular = '<button type="button" class="btn-chico btn-gris" disabled title="Solo el rol ADMIN puede anular matrículas con pagos registrados">🔒 Anular</button>';
+                } else {
+                    btnAnular = '<button type="button" class="btn-chico btn-rojo btn-anular" data-id="' + m.id + '">Anular</button>';
+                }
+            }
 
             return '<tr>' +
                 '<td>' + App.fecha(m.fecha) + '</td>' +
                 '<td><b>' + App.escapar(m.alumno) + '</b></td>' +
                 '<td>' + App.escapar(m.alumnoDni) + '</td>' +
                 '<td>' + App.escapar(m.seccion) + '</td>' +
-                '<td><span class="etiqueta ' + claseBadge + '">' + App.nombre(m.estado) + '</span></td>' +
+                '<td><span class="etiqueta ' + claseBadge + '">' + App.nombre(m.estado) + '</span>' + infoAnulacion + '</td>' +
                 '<td>' + App.escapar(m.registradoPor) + '</td>' +
                 '<td class="acciones">' + btnCaja + btnTrasladar + btnAnular + '</td>' +
                 '</tr>';
@@ -167,15 +288,247 @@
     }
 
     // =========================================================
-    // ANULAR
+    // ANULAR MATRÍCULA (INSCRITA o MATRICULADA con devolución)
     // =========================================================
     $('#tabla').on('click', '.btn-anular', function () {
         var m = buscarMatricula($(this).data('id'));
-        if (!confirm('¿Anular la matrícula de ' + m.alumno + ' en ' + m.seccion + '?\nLa vacante quedará libre.')) return;
+        if (!m) return;
 
-        App.api('POST', '/api/matriculas/' + m.id + '/anular')
-            .done(function () { App.toast('Matrícula anulada', 'ok'); cargar(); })
-            .fail(function (xhr) { if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error'); });
+        if (m.estado === 'INSCRITA') {
+            abrirModalAnulacionInscrita(m);
+        } else {
+            App.api('GET', '/api/pagos/cuenta/' + m.id)
+                .done(function (cc) {
+                    abrirModalAnulacionMatriculada(m, cc);
+                })
+                .fail(function (xhr) {
+                    if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
+                });
+        }
+    });
+
+    function abrirModalAnulacionInscrita(m) {
+        var $fondo = $('<div class="modal-fondo"><form class="modal">' +
+            '<h2>Anular inscripción (sin pagos)</h2>' +
+            '<p><b>' + App.escapar(m.alumno) + '</b> (DNI: ' + App.escapar(m.alumnoDni) + ')<br>' +
+            '<small>Sección: ' + App.escapar(m.seccion) + '</small></p>' +
+            '<div class="campo" style="margin-bottom:12px;">' +
+            '  <label for="motivoAnulacion">Motivo de la anulación *</label>' +
+            '  <input type="text" id="motivoAnulacion" maxlength="200" required placeholder="Ej. Desistimiento antes de pagar derecho de matrícula">' +
+            '</div>' +
+            '<div class="botones">' +
+            '  <button type="button" class="btn-gris cancelar">Cancelar</button>' +
+            '  <button type="submit" class="btn-rojo">Confirmar Anulación</button>' +
+            '</div>' +
+            '</form></div>');
+
+        $('body').append($fondo);
+        $fondo.find('#motivoAnulacion').focus();
+
+        $fondo.on('click', '.cancelar', function () { $fondo.remove(); });
+        $fondo.on('submit', 'form', function (e) {
+            e.preventDefault();
+            var motivo = $fondo.find('#motivoAnulacion').val().trim();
+            if (!motivo) return;
+            $fondo.find('[type=submit]').prop('disabled', true).text('Anulando...');
+
+            App.api('POST', '/api/matriculas/' + m.id + '/anular', { motivo: motivo, recibosADevolverIds: [] })
+                .done(function () {
+                    App.toast('Inscripción anulada correctamente', 'ok');
+                    $fondo.remove();
+                    cargar();
+                })
+                .fail(function (xhr) {
+                    if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
+                    $fondo.find('[type=submit]').prop('disabled', false).text('Confirmar Anulación');
+                });
+        });
+    }
+
+    function abrirModalAnulacionMatriculada(m, cc) {
+        var recibosEmitidos = (cc.recibos || []).filter(function (r) {
+            return r.tipo === 'INGRESO' && r.estado === 'EMITIDO';
+        }).sort(function (a, b) { return a.id - b.id; });
+
+        var filasRecibosHtml = recibosEmitidos.length
+            ? recibosEmitidos.map(function (r) {
+                return '<label class="item-recibo-dev">' +
+                    '<div style="display:flex; align-items:center; gap:10px;">' +
+                    '  <input type="checkbox" class="chk-recibo-dev" value="' + r.id + '" data-monto="' + r.monto + '" style="width:auto; margin:0;">' +
+                    '  <div>' +
+                    '    <b>' + App.escapar(r.numero) + '</b> · ' + App.escapar(r.concepto) + '<br>' +
+                    '    <small style="color:#64748b;">Emitido: ' + App.fecha(r.fecha) + ' · Medio original: ' + App.escapar(r.metodoPago || 'EFECTIVO') + '</small>' +
+                    '  </div>' +
+                    '</div>' +
+                    '<b style="color:var(--azul); white-space:nowrap;">S/ ' + Number(r.monto).toFixed(2) + '</b>' +
+                    '</label>';
+            }).join('')
+            : '<div style="padding:12px; color:#64748b; text-align:center;">No hay recibos de ingreso pendientes de devolución</div>';
+
+        var $fondo = $('<div class="modal-fondo"><form class="modal" style="max-width:560px;">' +
+            '<h2>Anular Matrícula y Emitir Boletas de Devolución</h2>' +
+            '<p style="margin-bottom:10px;"><b>' + App.escapar(m.alumno) + '</b> (DNI: ' + App.escapar(m.alumnoDni) + ')<br>' +
+            '<small>Sección: ' + App.escapar(m.seccion) + ' · Se liberará 1 vacante y las cuotas en DEBE pasarán a ANULADA (Deuda S/ 0.00).</small></p>' +
+            '<div class="campo" style="margin-bottom:12px;">' +
+            '  <label for="motivoAnulacion">Motivo de la anulación / retiro *</label>' +
+            '  <input type="text" id="motivoAnulacion" maxlength="200" required placeholder="Ej. Desistimiento antes del inicio de clases / Retiro por traslado">' +
+            '</div>' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
+            '  <label style="font-weight:bold; font-size:13px; margin:0;">Selecciona los recibos pagados a reembolsar (opcional):</label>' +
+            '  <div style="font-size:12px;">' +
+            '    <a href="#" id="linkMarcarTodos">Marcar todos</a> · <a href="#" id="linkDesmarcarTodos">Ninguno</a>' +
+            '  </div>' +
+            '</div>' +
+            '<div class="lista-recibos-devolucion">' + filasRecibosHtml + '</div>' +
+            '<div class="resumen-devolucion" id="boxResumenDev">' +
+            '  <div>Recibos marcados para reembolso: <b id="lblCantDev">0</b> (se emitirá 1 boleta <b>DEV-00000X</b> por cada recibo marcado)</div>' +
+            '  <div style="margin-top:4px; font-size:14px;">Monto total a devolver: <b id="lblTotalDev" style="color:var(--rojo);">S/ 0.00</b></div>' +
+            '</div>' +
+            '<div class="campo" id="campoMetodoDev" hidden style="margin-bottom:12px; max-width:240px;">' +
+            '  <label for="metodoDevolucion">Medio de Devolución</label>' +
+            '  <select id="metodoDevolucion">' +
+            '    <option value="EFECTIVO">Efectivo</option>' +
+            '    <option value="TRANSFERENCIA">Transferencia</option>' +
+            '    <option value="YAPE/PLIN">Yape / Plin</option>' +
+            '    <option value="TARJETA">Tarjeta</option>' +
+            '  </select>' +
+            '</div>' +
+            '<div class="botones">' +
+            '  <button type="button" class="btn-gris cancelar">Cancelar</button>' +
+            '  <button type="submit" class="btn-rojo">Confirmar Anulación</button>' +
+            '</div>' +
+            '</form></div>');
+
+        $('body').append($fondo);
+        $fondo.find('#motivoAnulacion').focus();
+
+        function actualizarResumen() {
+            var total = 0;
+            var cant = 0;
+            $fondo.find('.chk-recibo-dev:checked').each(function () {
+                cant++;
+                total += Number($(this).data('monto')) || 0;
+            });
+            $fondo.find('#lblCantDev').text(cant);
+            $fondo.find('#lblTotalDev').text('S/ ' + total.toFixed(2));
+            $fondo.find('#campoMetodoDev').prop('hidden', cant === 0);
+        }
+
+        $fondo.on('change', '.chk-recibo-dev', actualizarResumen);
+        $fondo.on('click', '#linkMarcarTodos', function (e) {
+            e.preventDefault();
+            $fondo.find('.chk-recibo-dev').prop('checked', true);
+            actualizarResumen();
+        });
+        $fondo.on('click', '#linkDesmarcarTodos', function (e) {
+            e.preventDefault();
+            $fondo.find('.chk-recibo-dev').prop('checked', false);
+            actualizarResumen();
+        });
+        $fondo.on('click', '.cancelar', function () { $fondo.remove(); });
+
+        $fondo.on('submit', 'form', function (e) {
+            e.preventDefault();
+            var motivo = $fondo.find('#motivoAnulacion').val().trim();
+            if (!motivo) return;
+
+            var ids = [];
+            $fondo.find('.chk-recibo-dev:checked').each(function () {
+                ids.push(Number($(this).val()));
+            });
+            var metodo = $fondo.find('#metodoDevolucion').val();
+
+            $fondo.find('[type=submit]').prop('disabled', true).text('Procesando...');
+
+            App.api('POST', '/api/matriculas/' + m.id + '/anular', {
+                motivo: motivo,
+                recibosADevolverIds: ids,
+                metodoDevolucion: metodo
+            }).done(function (res) {
+                $fondo.remove();
+                cargar();
+                var boletas = res.boletasDevolucion || [];
+                if (boletas.length > 0) {
+                    App.toast('✔ Matrícula anulada y ' + boletas.length + ' boleta(s) de devolución emitida(s)', 'ok');
+                    mostrarResumenBoletasEmitidas(res, boletas);
+                } else {
+                    App.toast('✔ Matrícula anulada (deuda pendiente en S/ 0.00)', 'ok');
+                }
+            }).fail(function (xhr) {
+                if (xhr.status !== 401) App.toast(App.mensajeError(xhr), 'error');
+                $fondo.find('[type=submit]').prop('disabled', false).text('Confirmar Anulación');
+            });
+        });
+    }
+
+    function mostrarResumenBoletasEmitidas(matriculaRes, boletas) {
+        var filas = boletas.map(function (b) {
+            return '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e2e8f0;">' +
+                '<div>' +
+                '  <b style="color:var(--rojo);">' + App.escapar(b.numero) + '</b> · S/ ' + Number(b.monto).toFixed(2) + '<br>' +
+                '  <small style="color:#64748b;">Ref: ' + App.escapar(b.reciboOrigenNumero || '') + ' · ' + App.escapar(b.concepto) + '</small>' +
+                '</div>' +
+                '<button type="button" class="btn-chico btn-gris btn-imprimir-dev" data-id="' + b.id + '">🖨 Ver / Imprimir</button>' +
+                '</div>';
+        }).join('');
+
+        var $fondo = $('<div class="modal-fondo"><div class="modal" style="max-width:520px;">' +
+            '<h2>🧾 Boletas de Devolución Emitidas</h2>' +
+            '<p>Se anularon las cuotas pendientes (Deuda = S/ 0.00) y se generaron las siguientes boletas de devolución para <b>' + App.escapar(matriculaRes.alumno) + '</b>:</p>' +
+            '<div class="lista-recibos-devolucion">' + filas + '</div>' +
+            '<div class="botones">' +
+            '  <a href="pagos.html?matriculaId=' + matriculaRes.id + '" class="btn btn-gris" style="text-decoration:none;">Ir a Cuenta / Caja</a>' +
+            '  <button type="button" class="btn cerrar-resumen">Listo</button>' +
+            '</div>' +
+            '</div></div>');
+
+        $('body').append($fondo);
+        $fondo.on('click', '.cerrar-resumen', function () { $fondo.remove(); });
+        $fondo.on('click', '.btn-imprimir-dev', function () {
+            var id = $(this).data('id');
+            var boleta = boletas.find(function (x) { return x.id === id; });
+            if (boleta) abrirBoletaImpresion(boleta);
+        });
+    }
+
+    function abrirBoletaImpresion(r) {
+        $('#tituloModalBoleta').text('Boleta de Devolución ' + r.numero);
+        var html =
+            '<div class="recibo-cabecera">' +
+            '  <h2>🏫 COLEGIO — EDUCONTROL</h2>' +
+            '  <div style="font-size:12px; font-weight:bold; color:#b91c1c; margin-top:2px;">BOLETA DE DEVOLUCIÓN / NOTA DE CRÉDITO</div>' +
+            '  <div style="font-size:15px; font-weight:bold; margin-top:6px;">N° ' + App.escapar(r.numero) + '</div>' +
+            '</div>' +
+            '<div class="recibo-fila"><span>Fecha de emisión:</span><b>' + App.fecha(r.fecha) + '</b></div>' +
+            '<div class="recibo-fila"><span>Alumno:</span><b>' + App.escapar(r.alumnoNombre) + ' (DNI: ' + App.escapar(r.alumnoDni) + ')</b></div>' +
+            '<div class="recibo-fila"><span>Apoderado:</span><span>' + App.escapar(r.apoderado || '—') + '</span></div>' +
+            '<div class="recibo-fila"><span>Sección:</span><span>' + App.escapar(r.seccionDescripcion) + ' (' + App.escapar(r.anio) + ')</span></div>' +
+            '<hr style="border:none; border-top:1px dashed #cbd5e1; margin:8px 0;">' +
+            '<div class="recibo-fila"><span>Recibo Anulado Ref.:</span><b>' + App.escapar(r.reciboOrigenNumero || '—') + (r.reciboOrigenFecha ? ' (Emitido el ' + App.fecha(r.reciboOrigenFecha) + ')' : '') + '</b></div>' +
+            '<div class="recibo-fila"><span>Concepto Devuelto:</span><span>' + App.escapar(r.concepto) + '</span></div>' +
+            '<div class="recibo-fila"><span>Motivo:</span><span>' + App.escapar(r.motivoAnulacion || '—') + '</span></div>' +
+            '<div class="recibo-fila"><span>Medio de Devolución:</span><span>' + App.escapar(r.metodoPago || 'EFECTIVO') + '</span></div>' +
+            '<div class="recibo-fila"><span>Autorizado por:</span><b>' + App.escapar(r.anuladoPor || r.cajero) + '</b></div>' +
+            '<div class="recibo-total">' +
+            '  <div class="recibo-fila" style="margin:0;">' +
+            '    <span>MONTO DEVUELTO</span>' +
+            '    <span>S/ ' + Number(r.monto).toFixed(2) + '</span>' +
+            '  </div>' +
+            '</div>' +
+            '<div class="recibo-firmas">' +
+            '  <div class="recibo-firma-linea">Firma Administración</div>' +
+            '  <div class="recibo-firma-linea">Firma del Apoderado<br><small>(Recibí conforme)</small></div>' +
+            '</div>';
+
+        $('#contenidoBoletaImpresion').html(html);
+        $('#modalBoletaImpresion').prop('hidden', false);
+    }
+
+    $('#btnCerrarModalBoleta, #btnListoBoleta').on('click', function () {
+        $('#modalBoletaImpresion').prop('hidden', true);
+    });
+    $('#btnImprimirBoleta').on('click', function () {
+        window.print();
     });
 
     // =========================================================
