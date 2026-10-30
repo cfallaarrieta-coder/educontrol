@@ -57,7 +57,7 @@ services:
     image: redis:7.2-alpine
     container_name: educontrol-sentinel-1
     command: >
-      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     ports:
       - "26379:26379"
     depends_on:
@@ -69,7 +69,7 @@ services:
     image: redis:7.2-alpine
     container_name: educontrol-sentinel-2
     command: >
-      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     ports:
       - "26380:26379"
     depends_on:
@@ -81,7 +81,7 @@ services:
     image: redis:7.2-alpine
     container_name: educontrol-sentinel-3
     command: >
-      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+      sh -c "printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel announce-hostnames yes\nsentinel monitor educontrol-master redis-master 6379 2\nsentinel down-after-milliseconds educontrol-master 5000\nsentinel failover-timeout educontrol-master 10000\nsentinel parallel-syncs educontrol-master 1\n' > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
     ports:
       - "26381:26379"
     depends_on:

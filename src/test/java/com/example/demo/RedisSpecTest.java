@@ -1,5 +1,6 @@
 package com.example.demo;
 
+import com.example.demo.config.RedisConfig;
 import com.example.demo.config.SessionInterceptor;
 import com.example.demo.controller.AuthController;
 import com.example.demo.dto.*;
@@ -8,11 +9,13 @@ import com.example.demo.entity.Usuario;
 import com.example.demo.exception.NegocioException;
 import com.example.demo.repository.UsuarioRepository;
 import com.example.demo.service.*;
+import io.lettuce.core.ReadFrom;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
@@ -197,5 +200,39 @@ class RedisSpecTest {
         authService.login(new LoginRequest("admin", "123456"));
         assertEquals(0, redisService.obtenerIntentosFallidosLogin("admin"),
                 "Si acierta su contraseña, el contador vuelve a cero");
+    }
+
+    @Test
+    void seccion4_configuracionSentinelYReplicasConLecturaPreferenteEnReplicas() {
+        RedisConfig config = new RedisConfig();
+
+        // Caso A: Opción 2 en Railway (Master + 2 Réplicas + 3 Sentinels)
+        LettuceConnectionFactory sentinelFactory = config.redisConnectionFactory(
+                "redis://default:railwaySecretPass@redis-master.railway.internal:6379",
+                "",
+                "educontrol-master",
+                "sentinel-1.railway.internal:26379,sentinel-2.railway.internal:26379,sentinel-3.railway.internal:26379",
+                "",
+                ""
+        );
+        assertNotNull(sentinelFactory.getSentinelConfiguration(),
+                "Debe activar RedisSentinelConfiguration cuando se definen nodos Sentinel");
+        assertEquals("educontrol-master", sentinelFactory.getSentinelConfiguration().getMaster().getName());
+        assertEquals(3, sentinelFactory.getSentinelConfiguration().getSentinels().size());
+        assertEquals(ReadFrom.REPLICA_PREFERRED,
+                sentinelFactory.getClientConfiguration().getReadFrom().orElse(null),
+                "Debe leer consultas rápidas desde las Réplicas (REPLICA_PREFERRED)");
+
+        // Caso B: Maestro + Réplicas directas
+        LettuceConnectionFactory replicaFactory = config.redisConnectionFactory(
+                "redis://default:railwaySecretPass@redis-master.railway.internal:6379",
+                "",
+                "educontrol-master",
+                "",
+                "",
+                "redis-replica-1.railway.internal:6379,redis-replica-2.railway.internal:6379"
+        );
+        assertEquals(ReadFrom.REPLICA_PREFERRED,
+                replicaFactory.getClientConfiguration().getReadFrom().orElse(null));
     }
 }
