@@ -66,35 +66,20 @@ public class RedisConfig {
         // 1. MODO OPCIÓN 2 (RECOMENDADO EN SPEC): Maestro + 2 Réplicas + 3 Sentinels
         List<RedisNode> nodosSentinel = parsearNodos(sentinelNodes);
         if (!nodosSentinel.isEmpty()) {
-            RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration();
-            sentinelConfig.master(sentinelMaster != null && !sentinelMaster.isBlank()
-                    ? sentinelMaster.trim()
-                    : "educontrol-master");
-            for (RedisNode nodo : nodosSentinel) {
-                sentinelConfig.addSentinel(nodo);
+            LettuceConnectionFactory sentinelFactory = construirSentinelFactory(
+                    masterInfo, passwordEfectivo, sentinelMaster, nodosSentinel, sentinelPassword, clientOptions);
+            if (esFactoriaConectada(sentinelFactory)) {
+                return sentinelFactory;
             }
-            if (masterInfo.username() != null && !masterInfo.username().isBlank()) {
-                sentinelConfig.setUsername(masterInfo.username());
-            }
-            if (passwordEfectivo != null && !passwordEfectivo.isBlank()) {
-                sentinelConfig.setPassword(RedisPassword.of(passwordEfectivo));
-            }
-            if (sentinelPassword != null && !sentinelPassword.isBlank()) {
-                sentinelConfig.setSentinelPassword(RedisPassword.of(sentinelPassword.trim()));
-            }
-
-            LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-                    .commandTimeout(Duration.ofSeconds(2))
-                    .clientOptions(clientOptions)
-                    // Lee consultas rápidas de las Réplicas y escribe cambios en el Maestro (Sección 4 REDIS_SPEC.md)
-                    .readFrom(ReadFrom.REPLICA_PREFERRED)
-                    .build();
-
-            return new LettuceConnectionFactory(sentinelConfig, clientConfig);
+            System.out.println(">>> Nodos Sentinel no disponibles aún (" + sentinelNodes
+                    + "). Conectando directamente al Maestro y sus Réplicas en Railway...");
         }
 
-        // 2. MODO MAESTRO + RÉPLICAS ESTÁTICAS (Sin Sentinel, usando REDIS_REPLICA_URLS)
-        List<EndpointInfo> replicas = parsearListaUris(replicaUrls);
+        // 2. MODO MAESTRO + RÉPLICAS (explícitas en REDIS_REPLICA_URLS o autodescubiertas desde el Maestro)
+        List<EndpointInfo> replicas = new ArrayList<>(parsearListaUris(replicaUrls));
+        if (replicas.isEmpty()) {
+            replicas.addAll(descubrirReplicasDesdeMaestro(masterInfo, passwordEfectivo, clientOptions));
+        }
         if (!replicas.isEmpty()) {
             RedisStaticMasterReplicaConfiguration masterReplicaConfig =
                     new RedisStaticMasterReplicaConfiguration(masterInfo.host(), masterInfo.port());
@@ -179,6 +164,125 @@ public class RedisConfig {
                         + e.getMessage() + "). Usando pizarra en memoria local como respaldo.");
             }
         };
+    }
+
+    public LettuceConnectionFactory construirSentinelFactory(
+            EndpointInfo masterInfo,
+            String passwordEfectivo,
+            String sentinelMaster,
+            List<RedisNode> nodosSentinel,
+            String sentinelPassword,
+            ClientOptions clientOptions) {
+        RedisSentinelConfiguration sentinelConfig = new RedisSentinelConfiguration();
+        sentinelConfig.master(sentinelMaster != null && !sentinelMaster.isBlank()
+                ? sentinelMaster.trim()
+                : "educontrol-master");
+        for (RedisNode nodo : nodosSentinel) {
+            sentinelConfig.addSentinel(nodo);
+        }
+        if (masterInfo.username() != null && !masterInfo.username().isBlank()) {
+            sentinelConfig.setUsername(masterInfo.username());
+        }
+        if (passwordEfectivo != null && !passwordEfectivo.isBlank()) {
+            sentinelConfig.setPassword(RedisPassword.of(passwordEfectivo));
+        }
+        if (sentinelPassword != null && !sentinelPassword.isBlank()) {
+            sentinelConfig.setSentinelPassword(RedisPassword.of(sentinelPassword.trim()));
+        }
+
+        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+                .commandTimeout(Duration.ofSeconds(2))
+                .clientOptions(clientOptions)
+                // Lee consultas rápidas de las Réplicas y escribe cambios en el Maestro (Sección 4 REDIS_SPEC.md)
+                .readFrom(ReadFrom.REPLICA_PREFERRED)
+                .build();
+
+        return new LettuceConnectionFactory(sentinelConfig, clientConfig);
+    }
+
+    private boolean esFactoriaConectada(LettuceConnectionFactory factory) {
+        try {
+            factory.afterPropertiesSet();
+            try (RedisConnection conn = factory.getConnection()) {
+                return conn.ping() != null;
+            }
+        } catch (Exception e) {
+            try {
+                factory.destroy();
+            } catch (Exception ignored) {
+            }
+            return false;
+        }
+    }
+
+    private List<EndpointInfo> descubrirReplicasDesdeMaestro(
+            EndpointInfo masterInfo, String passwordEfectivo, ClientOptions clientOptions) {
+        List<EndpointInfo> descubiertas = new ArrayList<>();
+        if ("localhost".equalsIgnoreCase(masterInfo.host()) || "127.0.0.1".equals(masterInfo.host())) {
+            return descubiertas;
+        }
+        RedisStandaloneConfiguration standaloneConfig =
+                new RedisStandaloneConfiguration(masterInfo.host(), masterInfo.port());
+        if (masterInfo.username() != null && !masterInfo.username().isBlank()) {
+            standaloneConfig.setUsername(masterInfo.username());
+        }
+        if (passwordEfectivo != null && !passwordEfectivo.isBlank()) {
+            standaloneConfig.setPassword(RedisPassword.of(passwordEfectivo));
+        }
+        LettuceClientConfiguration.LettuceClientConfigurationBuilder builder = LettuceClientConfiguration.builder()
+                .commandTimeout(Duration.ofSeconds(2))
+                .clientOptions(clientOptions);
+        if (masterInfo.ssl()) {
+            builder.useSsl();
+        }
+        LettuceConnectionFactory tempFactory = new LettuceConnectionFactory(standaloneConfig, builder.build());
+        try {
+            tempFactory.afterPropertiesSet();
+            try (RedisConnection conn = tempFactory.getConnection()) {
+                Properties info = conn.serverCommands().info("replication");
+                if (info != null) {
+                    for (String key : info.stringPropertyNames()) {
+                        if (key.startsWith("slave")) {
+                            String val = info.getProperty(key, "");
+                            String host = extraerCampoInfo(val, "ip");
+                            String portStr = extraerCampoInfo(val, "port");
+                            int port = 6379;
+                            try {
+                                if (portStr != null) {
+                                    port = Integer.parseInt(portStr);
+                                }
+                            } catch (NumberFormatException ignored) {
+                            }
+                            if (host != null && !host.isBlank()) {
+                                descubiertas.add(new EndpointInfo(
+                                        host, port, masterInfo.username(), passwordEfectivo, masterInfo.ssl()));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            try {
+                tempFactory.destroy();
+            } catch (Exception ignored) {
+            }
+        }
+        return descubiertas;
+    }
+
+    private static String extraerCampoInfo(String lineaSlave, String campo) {
+        if (lineaSlave == null) {
+            return null;
+        }
+        String prefijo = campo + "=";
+        for (String parte : lineaSlave.split(",")) {
+            String item = parte.trim();
+            if (item.startsWith(prefijo)) {
+                return item.substring(prefijo.length()).trim();
+            }
+        }
+        return null;
     }
 
     private String obtenerResumenReplicacion(RedisConnection conn) {

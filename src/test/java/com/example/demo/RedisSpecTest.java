@@ -207,13 +207,15 @@ class RedisSpecTest {
         RedisConfig config = new RedisConfig();
 
         // Caso A: Opción 2 en Railway (Master + 2 Réplicas + 3 Sentinels)
-        LettuceConnectionFactory sentinelFactory = config.redisConnectionFactory(
-                "redis://default:railwaySecretPass@redis-master.railway.internal:6379",
-                "",
+        RedisConfig.EndpointInfo masterInfo = RedisConfig.parsearRedisUri(
+                "redis://default:railwaySecretPass@redis-master.railway.internal:6379", "localhost", 6379);
+        LettuceConnectionFactory sentinelFactory = config.construirSentinelFactory(
+                masterInfo,
+                masterInfo.password(),
                 "educontrol-master",
-                "sentinel-1.railway.internal:26379,sentinel-2.railway.internal:26379,sentinel-3.railway.internal:26379",
+                RedisConfig.parsearNodos("sentinel-1.railway.internal:26379,sentinel-2.railway.internal:26379,sentinel-3.railway.internal:26379"),
                 "",
-                ""
+                io.lettuce.core.ClientOptions.create()
         );
         assertNotNull(sentinelFactory.getSentinelConfiguration(),
                 "Debe activar RedisSentinelConfiguration cuando se definen nodos Sentinel");
@@ -223,7 +225,7 @@ class RedisSpecTest {
                 sentinelFactory.getClientConfiguration().getReadFrom().orElse(null),
                 "Debe leer consultas rápidas desde las Réplicas (REPLICA_PREFERRED)");
 
-        // Caso B: Maestro + Réplicas directas
+        // Caso B: Maestro + Réplicas directas (y fallback automático si Sentinel no responde aún)
         LettuceConnectionFactory replicaFactory = config.redisConnectionFactory(
                 "redis://default:railwaySecretPass@redis-master.railway.internal:6379",
                 "",
